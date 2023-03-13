@@ -41,3 +41,6 @@ vignettes/*.pdf
 # OS generated files 
 .DS_Store
 .DS_Store?
+
+# Large data objects
+data/Norwegian_lakes.rds
