@@ -24,6 +24,8 @@ I have uploaded all the cleaned data to the "data"-folder, except for the lake p
 
 ## Loading Norway map
 
+
+
 I think `PointedSDMs` has a function for this, so probably rewrite some of the below.
 
 ```{r, Norway map}
