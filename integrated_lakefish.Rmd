@@ -17,27 +17,26 @@ library(raster)
 library(INLA)
 library(dplyr)
 
-library(sf) # for sf objects
-library(plyr)
-library(ggmap) # also for nice maps
-library(maps)
-library(RColorBrewer)
-library(INLA)
-library(PointedSDMs)
-library(sp)
-library(spatstat)
-library(maptools)
-library(reshape2)
-library(rgeos)
-library(fields)
-library(viridis)
-library(colorspace)
-library(patchwork)
+#library(sf) # for sf objects
+#library(plyr)
+#library(ggmap) # also for nice maps
+#library(maps)
+#library(RColorBrewer)
+#library(INLA)
+#library(PointedSDMs)
+#library(sp)
+#library(spatstat)
+#library(maptools)
+#library(reshape2)
+#library(rgeos)
+#library(fields)
+
+#library(viridis)
+#library(colorspace)
+#library(patchwork)
 ```
 
-```{r}
-source("functions.R")
-```
+
 
 ## Downloading necessary data 
 I have uploaded all the cleaned data to the "data"-folder, except for the lake polygons which are too large to include on Github. But they are easily available here: 
@@ -54,30 +53,29 @@ I think `PointedSDMs` has a function for this, so probably rewrite some of the b
 # MAP ---------------------------------------------------------------------------------------------------------
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
-Projection <- CRS("+proj=longlat +ellps=WGS84")
+proj <- CRS("+proj=longlat +ellps=WGS84")
 norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
                   ylim=c(58,72), xlim=c(4,32))
 IDs <- sapply(strsplit(norwayfill$names, ":"), function(x) x[1])
 norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs, 
-                                   proj4string = Projection)
+                                             proj4string = proj)
 ```
 
 ```{r, make mesh}
 # INTEGRATION STACK --------------------------------------------------------------------------------------------
-Meshpars <- list(cutoff=0.08, max.edge=c(0.6, 3), offset=c(1,1))
-Mesh <- MakeSpatialRegion(data=NULL, bdry=norway.poly, 
-                                       meshpars=Meshpars,
-                                       proj = Projection)
+#Meshpars <- list(cutoff=0.08, max.edge=c(0.6, 3), offset=c(1,1))
+#Mesh <- MakeSpatialRegion(data=NULL, bdry=norway.poly, 
+#                                       meshpars=Meshpars,
+#                                       proj = proj)
+
+mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
+                     cutoff = 0.3, #cutoff = 0.08,
+                     max.edge = c(6, 3), 
+                     offset = c(1, 1), 
+                     crs = proj)
 
 
-mesh <- inla.mesh.2d(boundary = inla.sp2segment(PA), 
-                     cutoff = 0.2,
-                     max.edge = c(0.1, 0.24), 
-                     offset = c(0.1, 0.4))
-
-mesh$crs <- proj
-
-plot(Mesh$mesh)
+plot(mesh)
 ```
 ## Setting up observation and environmental data
 
@@ -106,19 +104,25 @@ Use <- c("decimalLongitude","decimalLatitude", "log_area", #"perimeter_m",
 
 Covariates <- SpatialPointsDataFrame(coords = covariateData[,c("decimalLongitude","decimalLatitude")],
                                      data = covariateData[,Use], 
-                                     proj4string = Projection)
+                                     proj4string = proj)
 Covariates@data <- data.frame(apply(Covariates@data, 2, scale))  # scale the covariates
 
+cov_pixel <- SpatialPixelsDataFrame(points = covariateData[,c("decimalLongitude","decimalLatitude")],
+                                     data = covariateData[,Use], 
+                                     proj4string = proj, tol = 0.340571)
+
+cov_pixel@data <- data.frame(apply(cov_pixel@data, 2, scale))  # scale the covariates
+cov_raster = rasterize(cov_pixel, raster(cov_pixel))
 # Observations
 Data_survey_df <- readRDS("data/survey_clean.rds")
 Data_survey <- SpatialPointsDataFrame(coords = Data_survey_df[,c("decimalLongitude","decimalLatitude")], 
                                       data = Data_survey_df[,c("occurrenceStatus","species")],
-                                      proj4string = Projection)
+                                      proj4string = proj)
 
 Data_artsobs_df <- readRDS("data/artsobs_clean.rds")
 Data_artsobs <- SpatialPointsDataFrame(coords = Data_artsobs_df[,c("decimalLongitude","decimalLatitude")], 
                                        data = Data_artsobs_df[,c("occurrenceStatus","species")],
-                                       proj4string = Projection)
+                                       proj4string = proj)
 
 
 
@@ -135,10 +139,11 @@ pike_artsobs_df <- filter(Data_artsobs_df, grepl('Esox lucius', species))
 
 
 MakeSpDF <- function(df){
-  Projection <- CRS("+proj=longlat +ellps=WGS84")
+  proj <- CRS("+proj=longlat +ellps=WGS84")
   sp_df <- SpatialPointsDataFrame(coords = df[,c("decimalLongitude","decimalLatitude")], 
                                   data = df[,c("occurrenceStatus","species")],
-                                  proj4string = Projection)
+                                  proj4string = proj)
+  colnames(sp_df@coords) = c("x", "y")
   sp_df
 }
 
@@ -152,3 +157,14 @@ trout_artsobs <- MakeSpDF(trout_artsobs_df)
 char_artsobs <- MakeSpDF(char_artsobs_df)
 pike_artsobs <- MakeSpDF(pike_artsobs_df)
 ```
+
+```{r}
+trout_setup <- intModel(trout_artsobs, spatialCovariates = cov_raster,
+                        Coordinates = c("x", "y"), Mesh = mesh, Projection = proj)
+trout_setup$addBias("trout_artsobs")
+
+trout_model <- fitISDM(trout_setup)
+
+saveRDS(trout_model, "results/trout_model.rds")
+```
+
