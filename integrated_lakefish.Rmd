@@ -159,12 +159,26 @@ pike_artsobs <- MakeSpDF(pike_artsobs_df)
 ```
 
 ```{r}
-trout_setup <- intModel(trout_artsobs, spatialCovariates = cov_raster,
+trout_setup <- intModel(trout_artsobs, #spatialCovariates = cov_raster,
                         Coordinates = c("x", "y"), Mesh = mesh, Projection = proj)
 trout_setup$addBias("trout_artsobs")
 
 trout_model <- fitISDM(trout_setup)
 
+summary(trout_model)
+
 saveRDS(trout_model, "results/trout_model.rds")
 ```
+## Plotting 
+
+```{r}
+projections <- predict(trout_model, mesh = mesh, mask = norway.poly, 
+                       spatial = TRUE,
+                       fun = 'linear', n.samples = 1000)
+
+plot(projections, whattoplot = 'mean', 
+     colourLow = 'orange', colourHigh = 'dark red') 
+  
+```
+
 
