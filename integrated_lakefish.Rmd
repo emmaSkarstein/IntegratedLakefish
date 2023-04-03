@@ -159,7 +159,9 @@ pike_artsobs <- MakeSpDF(pike_artsobs_df)
 ```
 
 ```{r}
-trout_setup <- intModel(trout_artsobs, #spatialCovariates = cov_raster,
+
+cov_raster <- dropLayer(cov_raster, 'ID')
+trout_setup <- intModel(trout_artsobs, spatialCovariates = cov_raster,
                         Coordinates = c("x", "y"), Mesh = mesh, Projection = proj)
 trout_setup$addBias("trout_artsobs")
 
