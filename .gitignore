@@ -45,3 +45,4 @@ vignettes/*.pdf
 # Large data objects
 data/Norwegian_lakes.rds
 results/trout_model.rds
+results/trout_model.rds
