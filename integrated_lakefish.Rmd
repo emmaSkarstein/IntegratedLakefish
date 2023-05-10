@@ -1,7 +1,7 @@
 ---
 title: "Integrated lakefish"
 output: html_document
-date: `r Sys.Date()`
+date: April 2023
 ---
 
 As a start, I think we can try to redo (this analysis)[https://htmlpreview.github.io/?https://github.com/emmaSkarstein/Effort_field_project/blob/main/R/Mini_test.html], but using Philip's `PointedSDMs`. So far, I have copied the data loading lines. 
@@ -161,16 +161,20 @@ pike_artsobs <- MakeSpDF(pike_artsobs_df)
 ```{r}
 
 cov_raster <- dropLayer(cov_raster, 'ID')
-trout_setup <- intModel(trout_artsobs, spatialCovariates = cov_raster,
-                        Coordinates = c("x", "y"), Mesh = mesh, Projection = proj)
+trout_setup <- intModel(trout_artsobs, 
+                        spatialCovariates = cov_raster,
+                        Coordinates = c("x", "y"), 
+                        Mesh = mesh, 
+                        Projection = proj)
 trout_setup$addBias("trout_artsobs")
 
 trout_model <- fitISDM(trout_setup)
 
 summary(trout_model)
 
-saveRDS(trout_model, "results/trout_model.rds")
+#saveRDS(trout_model, "results/trout_model.rds")
 ```
+
 ## Plotting 
 
 ```{r}
@@ -183,4 +187,38 @@ plot(projections, whattoplot = 'mean',
   
 ```
 
+
+# Joint model for four fish species
+
+```{r}
+library(tidyverse)
+
+four_fish_survey <- Data_artsobs_df %>% 
+  mutate(species = str_replace(species, " ", "_")) %>% 
+  MakeSpDF()
+four_fish_artsobs <- Data_survey_df %>% 
+  mutate(species = str_replace(species, " ", "_")) %>% 
+  MakeSpDF()
+```
+
+```{r}
+#cov_raster <- dropLayer(cov_raster, 'ID')
+
+four_fish_setup <- intModel(
+  four_fish_survey,               # Survey data
+  four_fish_artsobs,              # Citizen science data
+  spatialCovariates = cov_raster, # Covariates
+  speciesName = "species",        # The column containing species name
+  speciesSpatial = TRUE,          # Should the species have their own sp. field?
+  Coordinates = c("x", "y"),      
+  Mesh = mesh, 
+  Projection = proj)
+
+# Add bias field (shared across all species)
+four_fish_setup$addBias("four_fish_artsobs")
+
+four_fish_model <- fitISDM(four_fish_setup)
+
+summary(four_fish_setup)
+```
 
