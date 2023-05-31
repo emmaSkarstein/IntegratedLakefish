@@ -193,12 +193,15 @@ plot(projections, whattoplot = 'mean',
 ```{r}
 library(tidyverse)
 
-four_fish_survey <- Data_artsobs_df %>% 
-  mutate(species = str_replace(species, " ", "_")) %>% 
+four_fish_artsobs <- Data_artsobs_df %>%
+  mutate(species = str_replace(species, " ", "_")) %>%
   MakeSpDF()
-four_fish_artsobs <- Data_survey_df %>% 
-  mutate(species = str_replace(species, " ", "_")) %>% 
+four_fish_survey <- Data_survey_df %>%
+  mutate(species = sub(" .*", "", str_replace(species, " ", "_"))) %>%
   MakeSpDF()
+
+# May have to switch "survey" and "artsobs" in below
+four_fish_artsobs <- four_fish_artsobs[four_fish_artsobs$species == unique(four_fish_survey$species),]
 ```
 
 ```{r}
@@ -219,6 +222,8 @@ four_fish_setup$addBias("four_fish_artsobs")
 
 four_fish_model <- fitISDM(four_fish_setup)
 
-summary(four_fish_setup)
+summary(four_fish_model)
+saveRDS(four_fish_model, "results/four_fish_model.rds")
+
 ```
 
