@@ -1,7 +1,7 @@
 ---
 title: "Integrated lakefish"
 output: html_document
-date: April 2023
+date: June 2023
 ---
 
 As a start, I think we can try to redo (this analysis)[https://htmlpreview.github.io/?https://github.com/emmaSkarstein/Effort_field_project/blob/main/R/Mini_test.html], but using Philip's `PointedSDMs`. So far, I have copied the data loading lines. 
@@ -10,7 +10,7 @@ As a start, I think we can try to redo (this analysis)[https://htmlpreview.githu
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r, loading packages}
 library(PointedSDMs)
 library(ggplot2)
 library(raster)
@@ -49,7 +49,7 @@ I have uploaded all the cleaned data to the "data"-folder, except for the lake p
 
 I think `PointedSDMs` has a function for this, so probably rewrite some of the below.
 
-```{r, Norway map}
+```{r, norway map}
 # MAP ---------------------------------------------------------------------------------------------------------
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
@@ -91,7 +91,7 @@ covariateData <- covariateData[complete.cases(covariateData$decimalLatitude,
                                               covariateData$area_km2,
                                               covariateData$HFP),]
 covariateData <- covariateData %>% mutate(log_area = log(area_km2)) %>% 
-  select(-c(ebint, no_vatn_lnr, eb_waterregionID))
+  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID))
 
 head(covariateData)
 
@@ -158,8 +158,8 @@ char_artsobs <- MakeSpDF(char_artsobs_df)
 pike_artsobs <- MakeSpDF(pike_artsobs_df)
 ```
 
-```{r}
-
+## Fitting the model
+```{r, fitting a single-species model, eval = FALSE}
 cov_raster <- dropLayer(cov_raster, 'ID')
 trout_setup <- intModel(trout_artsobs, 
                         spatialCovariates = cov_raster,
@@ -175,9 +175,8 @@ summary(trout_model)
 #saveRDS(trout_model, "results/trout_model.rds")
 ```
 
-## Plotting 
 
-```{r}
+```{r, plotting the trout model, eval = FALSE}
 projections <- predict(trout_model, mesh = mesh, mask = norway.poly, 
                        spatial = TRUE,
                        fun = 'linear', n.samples = 1000)
@@ -190,7 +189,7 @@ plot(projections, whattoplot = 'mean',
 
 # Joint model for four fish species
 
-```{r}
+```{r, preparing four fish data}
 library(tidyverse)
 
 four_fish_artsobs <- Data_artsobs_df %>%
@@ -201,10 +200,10 @@ four_fish_survey <- Data_survey_df %>%
   MakeSpDF()
 
 # May have to switch "survey" and "artsobs" in below
-four_fish_artsobs <- four_fish_artsobs[four_fish_artsobs$species == unique(four_fish_survey$species),]
+four_fish_survey <- four_fish_survey[four_fish_survey$species == unique(four_fish_artsobs$species),]
 ```
 
-```{r}
+```{r, fitting four fish data}
 #cov_raster <- dropLayer(cov_raster, 'ID')
 
 four_fish_setup <- intModel(
