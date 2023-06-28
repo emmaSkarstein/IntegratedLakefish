@@ -355,12 +355,10 @@ display: none;
 
 
 <pre class="r"><code>library(rgbif)
-library(scrubr)</code></pre>
-<pre><code>## Registered S3 method overwritten by &#39;hoardr&#39;:
-##   method           from
-##   print.cache_info httr</code></pre>
-<pre class="r"><code>library(maps)</code></pre>
-<pre class="r"><code>source(&quot;R/Data_preparation_functions.r&quot;)</code></pre>
+#library(scrubr)
+library(maps)
+library(stringr)</code></pre>
+<pre class="r"><code>source(&quot;R/Data_preparation_functions.R&quot;)</code></pre>
 <pre><code>## 
 ## Attaching package: &#39;plyr&#39;</code></pre>
 <pre><code>## The following object is masked from &#39;package:maps&#39;:
@@ -419,10 +417,12 @@ artsobs_matched &lt;- match_to_lake(artsobs_raw_joined, lakes, max_dist_from_lak
 <pre><code>## Calculating distance to closest lake...</code></pre>
 <pre><code>## old-style crs object detected; please recreate object with a recent sf::st_crs()
 ## old-style crs object detected; please recreate object with a recent sf::st_crs()</code></pre>
-<pre><code>## Number of observations further than 50m from a lake: 1447</code></pre>
-<pre><code>## Done! We removed 39% of the original observations.</code></pre>
+<pre><code>## Number of observations further than 50m from a lake: 1482</code></pre>
+<pre><code>## Done! We removed 40% of the original observations.</code></pre>
 <pre class="r"><code>artsobs &lt;- artsobs_matched %&gt;% 
-  mutate(occurenceStatus = as.logical(mapvalues(occurrenceStatus, c(&quot;ABSENT&quot;, &quot;PRESENT&quot;), c(FALSE,TRUE))))</code></pre>
+  mutate(occurenceStatus = as.logical(mapvalues(occurrenceStatus, c(&quot;ABSENT&quot;, &quot;PRESENT&quot;), c(FALSE,TRUE)))) %&gt;% 
+  st_set_geometry(NULL) %&gt;% 
+  mutate(species = sub(&quot; .*&quot;, &quot;&quot;, str_replace(species, &quot; &quot;, &quot;_&quot;)))</code></pre>
 <pre><code>## The following `from` values were not present in `x`: ABSENT</code></pre>
 </div>
 <div id="survey-data" class="section level2">
@@ -455,8 +455,14 @@ survey_list &lt;- match_to_lake(survey_raw, lakes, max_dist_from_lake = 50)</cod
 <pre class="r"><code>survey_matched &lt;- survey_list[[1]]
 survey &lt;- survey_matched %&gt;% 
   mutate(occurrenceStatus = as.logical(mapvalues(occurrenceStatus, 
-                                c(&quot;absent&quot;, &quot;present&quot;), c(FALSE,TRUE))))
+                                c(&quot;absent&quot;, &quot;present&quot;), c(FALSE,TRUE)))) %&gt;% 
+    st_set_geometry(NULL) %&gt;% 
+  mutate(species = str_replace(species, &quot; &quot;, &quot;_&quot;))
 # TODO: slightly odd that 80% of the observations are removed... Is it the non-norwegian ones?</code></pre>
+</div>
+<div id="plot-the-points" class="section level2">
+<h2>Plot the points</h2>
+<pre class="r"><code>#ggplot(survey)</code></pre>
 </div>
 <div id="saving-the-data" class="section level2">
 <h2>Saving the data</h2>

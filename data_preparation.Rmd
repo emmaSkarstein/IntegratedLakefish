@@ -10,12 +10,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r, warning=FALSE, message=FALSE}
 library(rgbif)
-library(scrubr)
+#library(scrubr)
 library(maps)
+library(stringr)
 ```
 
 ```{r}
-source("R/Data_preparation_functions.r")
+source("R/Data_preparation_functions.R")
 ```
 
 ## Polygons of Norwegian lakes
@@ -53,8 +54,9 @@ artsobs_raw_joined <- bind_rows(artsobs_data_list)
 artsobs_matched <- match_to_lake(artsobs_raw_joined, lakes, max_dist_from_lake = 50)[[1]] 
 
 artsobs <- artsobs_matched %>% 
-  mutate(occurenceStatus = as.logical(mapvalues(occurrenceStatus, c("ABSENT", "PRESENT"), c(FALSE,TRUE))))
-
+  mutate(occurenceStatus = as.logical(mapvalues(occurrenceStatus, c("ABSENT", "PRESENT"), c(FALSE,TRUE)))) %>% 
+  st_set_geometry(NULL) %>% 
+  mutate(species = sub(" .*", "", str_replace(species, " ", "_")))
 ```
 
 ## Survey data
@@ -78,9 +80,17 @@ survey_list <- match_to_lake(survey_raw, lakes, max_dist_from_lake = 50)
 survey_matched <- survey_list[[1]]
 survey <- survey_matched %>% 
   mutate(occurrenceStatus = as.logical(mapvalues(occurrenceStatus, 
-                                c("absent", "present"), c(FALSE,TRUE))))
+                                c("absent", "present"), c(FALSE,TRUE)))) %>% 
+    st_set_geometry(NULL) %>% 
+  mutate(species = str_replace(species, " ", "_"))
 # TODO: slightly odd that 80% of the observations are removed... Is it the non-norwegian ones?
 ```
+
+## Plot the points
+```{r}
+#ggplot(survey)
+```
+
 
 ## Saving the data
 
