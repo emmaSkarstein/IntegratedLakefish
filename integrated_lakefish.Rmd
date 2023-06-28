@@ -4,7 +4,7 @@ output: html_document
 date: June 2023
 ---
 
-As a start, I think we can try to redo (this analysis)[https://htmlpreview.github.io/?https://github.com/emmaSkarstein/Effort_field_project/blob/main/R/Mini_test.html], but using Philip's `PointedSDMs`. So far, I have copied the data loading lines. 
+As a start, I think we can try to redo [this analysis](https://htmlpreview.github.io/?https://github.com/emmaSkarstein/Effort_field_project/blob/main/R/Mini_test.html), but using Philip's `PointedSDMs`. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -16,24 +16,8 @@ library(ggplot2)
 library(raster)
 library(INLA)
 library(dplyr)
-
-#library(sf) # for sf objects
-#library(plyr)
-#library(ggmap) # also for nice maps
-#library(maps)
-#library(RColorBrewer)
-#library(INLA)
-#library(PointedSDMs)
-#library(sp)
-#library(spatstat)
-#library(maptools)
-#library(reshape2)
-#library(rgeos)
-#library(fields)
-
-#library(viridis)
-#library(colorspace)
-#library(patchwork)
+library(tidyverse)
+library(sf)
 ```
 
 
@@ -77,6 +61,7 @@ mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly),
 
 plot(mesh)
 ```
+
 ## Setting up observation and environmental data
 
 Next we load the observations as well as the environmental data.
@@ -107,36 +92,17 @@ Covariates <- SpatialPointsDataFrame(coords = covariateData[,c("decimalLongitude
                                      proj4string = proj)
 Covariates@data <- data.frame(apply(Covariates@data, 2, scale))  # scale the covariates
 
-cov_pixel <- SpatialPixelsDataFrame(points = covariateData[,c("decimalLongitude","decimalLatitude")],
-                                     data = covariateData[,Use], 
-                                     proj4string = proj, tol = 0.340571)
+cov_pixel <- SpatialPixelsDataFrame(
+  points = covariateData[,c("decimalLongitude","decimalLatitude")],
+  data = covariateData[,Use], 
+  proj4string = proj, tol = 0.340571)
 
 cov_pixel@data <- data.frame(apply(cov_pixel@data, 2, scale))  # scale the covariates
-cov_raster = rasterize(cov_pixel, raster(cov_pixel))
+cov_raster <- rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
+
 # Observations
-Data_survey_df <- readRDS("data/survey_clean.rds")
-Data_survey <- SpatialPointsDataFrame(coords = Data_survey_df[,c("decimalLongitude","decimalLatitude")], 
-                                      data = Data_survey_df[,c("occurrenceStatus","species")],
-                                      proj4string = proj)
-
-Data_artsobs_df <- readRDS("data/artsobs_clean.rds")
-Data_artsobs <- SpatialPointsDataFrame(coords = Data_artsobs_df[,c("decimalLongitude","decimalLatitude")], 
-                                       data = Data_artsobs_df[,c("occurrenceStatus","species")],
-                                       proj4string = proj)
-
-
-
-# Separating by species:
-perch_survey_df <- filter(Data_survey_df, grepl('Perca fluviatilis', species))
-trout_survey_df <- filter(Data_survey_df, grepl('Salmo trutta', species))
-char_survey_df <- filter(Data_survey_df, grepl('Salvelinus alpinus', species))
-pike_survey_df <- filter(Data_survey_df, grepl('Esox lucius', species))
-
-perch_artsobs_df <- filter(Data_artsobs_df, grepl('Perca fluviatilis', species))
-trout_artsobs_df <- filter(Data_artsobs_df, grepl('Salmo trutta', species))
-char_artsobs_df <- filter(Data_artsobs_df, grepl('Salvelinus alpinus', species))
-pike_artsobs_df <- filter(Data_artsobs_df, grepl('Esox lucius', species))
-
+Data_survey_df <- readRDS("data/survey_clean_new.rds") 
+Data_artsobs_df <- readRDS("data/artsobs_clean_new.rds")
 
 MakeSpDF <- function(df){
   proj <- CRS("+proj=longlat +ellps=WGS84")
@@ -146,26 +112,61 @@ MakeSpDF <- function(df){
   colnames(sp_df@coords) = c("x", "y")
   sp_df
 }
+```
 
-perch_survey <- MakeSpDF(perch_survey_df)
-trout_survey <- MakeSpDF(trout_survey_df)
-char_survey <- MakeSpDF(char_survey_df)
-pike_survey <- MakeSpDF(pike_survey_df)
+```{r, making spatial data frames}
+# Separating by species:
+perch_survey <- Data_survey_df %>% 
+  filter(grepl('Perca_fluviatilis', species)) %>% 
+  MakeSpDF()
+trout_survey <- Data_survey_df %>% 
+  filter(grepl('Salmo_trutta', species)) %>% 
+  MakeSpDF()
+char_survey <- Data_survey_df %>% 
+  filter(grepl('Salvelinus_alpinus', species)) %>% 
+  MakeSpDF()
+pike_survey <- Data_survey_df %>% 
+  filter(grepl('Esox_lucius', species)) %>% 
+  MakeSpDF()
 
-perch_artsobs <- MakeSpDF(perch_artsobs_df)
-trout_artsobs <- MakeSpDF(trout_artsobs_df)
-char_artsobs <- MakeSpDF(char_artsobs_df)
-pike_artsobs <- MakeSpDF(pike_artsobs_df)
+perch_artsobs <- Data_artsobs_df %>% 
+  filter(grepl('Perca_fluviatilis', species)) %>% 
+  MakeSpDF()
+trout_artsobs <- Data_artsobs_df %>% 
+  filter(grepl('Salmo_trutta', species)) %>% 
+  MakeSpDF()
+char_artsobs <- Data_artsobs_df %>% 
+  filter(grepl('Salvelinus_alpinus', species)) %>% 
+  MakeSpDF()
+pike_artsobs <- Data_artsobs_df %>% 
+  filter(grepl('Esox_lucius', species)) %>% 
+  MakeSpDF()
+
+# All four species:
+four_fish_artsobs <- Data_artsobs_df %>%
+  MakeSpDF()
+four_fish_survey <- Data_survey_df %>%
+  MakeSpDF()
+
+# Can maybe take this away after switching to new data. Check:
+unique(four_fish_artsobs$species)
+unique(four_fish_survey$species)
+#four_fish_survey <- four_fish_survey[four_fish_survey$species == unique(four_fish_artsobs$species),]
 ```
 
 ## Fitting the model
-```{r, fitting a single-species model, eval = FALSE}
-cov_raster <- dropLayer(cov_raster, 'ID')
+```{r, fitting a single-species model}
 trout_setup <- intModel(trout_artsobs, 
+                        trout_survey,
                         spatialCovariates = cov_raster,
                         Coordinates = c("x", "y"), 
                         Mesh = mesh, 
+                        responsePA = "occurrenceStatus",
+                        responseCounts = "occurenceStatus",
                         Projection = proj)
+trout_setup$specifySpatial(sharedSpatial = TRUE, 
+                           prior.range = c(10, 0.1),
+                           prior.sigma = c(0.1, 0.1))
 trout_setup$addBias("trout_artsobs")
 
 trout_model <- fitISDM(trout_setup)
@@ -176,7 +177,7 @@ summary(trout_model)
 ```
 
 
-```{r, plotting the trout model, eval = FALSE}
+```{r, plotting the trout model}
 projections <- predict(trout_model, mesh = mesh, mask = norway.poly, 
                        spatial = TRUE,
                        fun = 'linear', n.samples = 1000)
@@ -189,21 +190,9 @@ plot(projections, whattoplot = 'mean',
 
 # Joint model for four fish species
 
-```{r, preparing four fish data}
-library(tidyverse)
 
-four_fish_artsobs <- Data_artsobs_df %>%
-  mutate(species = str_replace(species, " ", "_")) %>%
-  MakeSpDF()
-four_fish_survey <- Data_survey_df %>%
-  mutate(species = sub(" .*", "", str_replace(species, " ", "_"))) %>%
-  MakeSpDF()
 
-# May have to switch "survey" and "artsobs" in below
-four_fish_survey <- four_fish_survey[four_fish_survey$species == unique(four_fish_artsobs$species),]
-```
-
-```{r, fitting four fish data}
+```{r, fitting four fish data, eval = FALSE}
 #cov_raster <- dropLayer(cov_raster, 'ID')
 
 four_fish_setup <- intModel(
