@@ -1,7 +1,7 @@
 ---
 title: "Integrated lakefish"
 output: html_document
-date: June 2023
+date: July 2023
 ---
 
 As a start, I think we can try to redo [this analysis](https://htmlpreview.github.io/?https://github.com/emmaSkarstein/Effort_field_project/blob/main/R/Mini_test.html), but using Philip's `PointedSDMs`. 
@@ -38,6 +38,7 @@ I think `PointedSDMs` has a function for this, so probably rewrite some of the b
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
 proj <- CRS("+proj=longlat +ellps=WGS84")
+#st_crs(proj) <- 4326
 norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
                   ylim=c(58,72), xlim=c(4,32))
 IDs <- sapply(strsplit(norwayfill$names, ":"), function(x) x[1])
@@ -71,14 +72,15 @@ Next we load the observations as well as the environmental data.
 
 # Covariates
 covariateData <- readRDS("data/environmental_covariates.RDS")
-covariateData <- covariateData[complete.cases(covariateData$decimalLatitude,
-                                              covariateData$decimalLongitude,
-                                              covariateData$area_km2,
-                                              covariateData$HFP),]
-covariateData <- covariateData %>% mutate(log_area = log(area_km2)) %>% 
-  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID))
+# covariateData <- covariateData[complete.cases(covariateData$decimalLatitude,
+#                                               covariateData$decimalLongitude,
+#                                               covariateData$area_km2,
+#                                               covariateData$HFP),]
+scale2 <- function(x, na.rm = FALSE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
 
-head(covariateData)
+covariateData <- covariateData %>% mutate(log_area = log(area_km2)) %>% 
+  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID)) %>% 
+  dplyr::mutate_at(vars(-decimalLongitude, -decimalLatitude), scale2, na.rm = TRUE)
 
 # Choose from 
 # "decimalLatitude", "decimalLongitude",
@@ -87,17 +89,15 @@ head(covariateData)
 Use <- c("decimalLongitude","decimalLatitude", "log_area", #"perimeter_m", 
          "eurolst_bio10", "SCI")
 
-Covariates <- SpatialPointsDataFrame(coords = covariateData[,c("decimalLongitude","decimalLatitude")],
-                                     data = covariateData[,Use], 
-                                     proj4string = proj)
-Covariates@data <- data.frame(apply(Covariates@data, 2, scale))  # scale the covariates
+Covariates <- covariateData %>% 
+  sf::st_as_sf(coords = c("decimalLongitude", "decimalLatitude"), 
+               crs = 4326)
 
 cov_pixel <- SpatialPixelsDataFrame(
   points = covariateData[,c("decimalLongitude","decimalLatitude")],
   data = covariateData[,Use], 
   proj4string = proj, tol = 0.340571)
 
-cov_pixel@data <- data.frame(apply(cov_pixel@data, 2, scale))  # scale the covariates
 cov_raster <- rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
 
 # Observations
@@ -147,11 +147,6 @@ four_fish_artsobs <- Data_artsobs_df %>%
   MakeSpDF()
 four_fish_survey <- Data_survey_df %>%
   MakeSpDF()
-
-# Can maybe take this away after switching to new data. Check:
-unique(four_fish_artsobs$species)
-unique(four_fish_survey$species)
-#four_fish_survey <- four_fish_survey[four_fish_survey$species == unique(four_fish_artsobs$species),]
 ```
 
 ## Fitting the model
@@ -162,7 +157,7 @@ trout_setup <- intModel(trout_artsobs,
                         Coordinates = c("x", "y"), 
                         Mesh = mesh, 
                         responsePA = "occurrenceStatus",
-                        responseCounts = "occurenceStatus",
+                        responseCounts = "occurenceStatus", # Not sure if needed since we don't have counts?
                         Projection = proj)
 trout_setup$specifySpatial(sharedSpatial = TRUE, 
                            prior.range = c(10, 0.1),
@@ -177,7 +172,7 @@ summary(trout_model)
 ```
 
 
-```{r, plotting the trout model}
+```{r, plotting the trout model, eval = FALSE}
 projections <- predict(trout_model, mesh = mesh, mask = norway.poly, 
                        spatial = TRUE,
                        fun = 'linear', n.samples = 1000)
@@ -193,8 +188,6 @@ plot(projections, whattoplot = 'mean',
 
 
 ```{r, fitting four fish data, eval = FALSE}
-#cov_raster <- dropLayer(cov_raster, 'ID')
-
 four_fish_setup <- intModel(
   four_fish_survey,               # Survey data
   four_fish_artsobs,              # Citizen science data
