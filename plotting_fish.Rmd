@@ -1,0 +1,135 @@
+---
+title: "Visualizing fish data"
+output: 
+  html_document:
+    fig.retina: 1
+date: "July 2023"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.showtext = TRUE)
+```
+
+```{r}
+library(PointedSDMs)
+library(ggplot2)
+library(raster)
+library(INLA)
+library(dplyr)
+library(tidyverse)
+library(sf)
+
+library(patchwork)
+```
+
+```{r}
+library(showtext)
+showtext_auto()
+
+f1 <- "Open sans"
+font_add_google(f1, f1)
+```
+
+
+```{r}
+# MAP --------------------------------------------------------------------------
+norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
+norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
+proj <- CRS("+proj=longlat +ellps=WGS84")
+norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
+                  ylim=c(58,72), xlim=c(4,32))
+IDs <- sapply(strsplit(norwayfill$names, ":"), function(x) x[1])
+norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs, 
+                                             proj4string = proj)
+```
+
+
+```{r}
+Data_survey_df <- readRDS("data/survey_clean_new.rds") 
+Data_artsobs_df <- readRDS("data/artsobs_clean_new.rds")
+```
+
+```{r}
+colors_fish <- c("hotpink4", "darkgoldenrod2", "darkgreen", "darkcyan")
+```
+
+
+```{r}
+p_artsobs <- ggplot(Data_artsobs_df, aes(x = decimalLongitude, y = decimalLatitude)) +
+  geom_polygon(data = norway, aes(long, lat, group = group), 
+               color="grey80", fill = "grey95") + 
+  geom_point(aes(color = species), size = 0.5, alpha = 0.3) +
+  facet_wrap(~species, nrow = 1) +
+  scale_color_manual(values = colors_fish) +
+  coord_map() +
+  ylab("Latitude") +
+  labs(tag = "Citizen science data") +
+  theme_minimal() +
+  theme(text = element_text(family = f1),
+        plot.tag = element_text(angle = 90, hjust = 0.5),
+        plot.tag.position = c(-0.03, 0.45),
+        legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+p_survey <- ggplot(Data_survey_df %>% filter(occurrenceStatus == "TRUE"), 
+       aes(x = decimalLongitude, y = decimalLatitude)) +
+  geom_polygon(data = norway, aes(long, lat, group = group), 
+               color="grey80", fill = "grey95") + 
+  geom_jitter(aes(color = species), size = 0.5, alpha = 0.3) +#, width = 0.1, height = 0.1) +
+  facet_wrap(~species, nrow = 1) +
+  scale_color_manual(values = colors_fish) +
+  coord_map() +
+  xlab("Longitude") +
+  ylab("Latitude") +
+  labs(tag = "Survey data") +
+  theme_minimal() +
+  theme(text = element_text(family = f1),
+        plot.tag = element_text(angle = 90, hjust = 0.5),
+        plot.tag.position = c(-0.03, 0.45),
+        legend.position = "none",
+        strip.text = element_blank(),
+        plot.margin = margin(l = 30))
+
+p_artsobs / p_survey
+
+ggsave("presence_points.pdf", height = 5, width = 8)
+```
+
+Where are the observations made in general?
+
+```{r}
+p_survey_density <- ggplot(Data_survey_df, 
+                           aes(x = decimalLongitude, y = decimalLatitude)) +
+  geom_polygon(data = norway, aes(long, lat, group = group), 
+               color="grey80", fill = "grey95") + 
+  geom_hex() +
+  facet_wrap(~species, nrow = 1) +
+  scale_fill_gradient(low = "darkcyan", high = "gold") +
+  coord_map() +
+  ylab("Survey data") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.title.x = element_blank())
+
+p_artsobs_density <- ggplot(Data_artsobs_df, 
+                           aes(x = decimalLongitude, y = decimalLatitude)) +
+  geom_polygon(data = norway, aes(long, lat, group = group), 
+               color="grey80", fill = "grey95") + 
+  geom_hex() +
+  facet_wrap(~species, nrow = 1) +
+  scale_fill_gradient(low = "darkcyan", high = "gold") +
+  coord_map() +
+  ylab("Citizen science data") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        strip.text = element_blank())
+
+p_survey_density / p_artsobs_density
+```
+
+
+
+
+
