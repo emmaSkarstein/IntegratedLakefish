@@ -16,7 +16,7 @@ library(stringr)
 ```
 
 ```{r}
-source("R/Data_preparation_functions.R")
+source("R/match_to_lake.R")
 ```
 
 ## Polygons of Norwegian lakes
