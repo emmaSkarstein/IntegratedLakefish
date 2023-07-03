@@ -188,15 +188,26 @@ plot(projections, whattoplot = 'mean',
 
 
 ```{r, fitting four fish data, eval = FALSE}
+# For this model we have:
+# - One bias field, based on CS data and common across all species
+# - Four shared fields, shared across the data sets (survey/citizen science), 
+#   but separate for each fish species.
+
 four_fish_setup <- intModel(
   four_fish_survey,               # Survey data
   four_fish_artsobs,              # Citizen science data
   spatialCovariates = cov_raster, # Covariates
   speciesName = "species",        # The column containing species name
   speciesSpatial = TRUE,          # Should the species have their own sp. field?
-  Coordinates = c("x", "y"),      
-  Mesh = mesh, 
-  Projection = proj)
+  Coordinates = c("x", "y"),      # Names of the coordinate variables
+  responsePA = "occurrenceStatus",# What is the name of the response column?
+  Mesh = mesh,                    # inla mesh object
+  Projection = proj)              # CRS for points and covariates
+
+# Set prior for shared spatial field
+trout_setup$specifySpatial(sharedSpatial = TRUE, 
+                           prior.range = c(10, 0.1),
+                           prior.sigma = c(0.1, 0.1))
 
 # Add bias field (shared across all species)
 four_fish_setup$addBias("four_fish_artsobs")
