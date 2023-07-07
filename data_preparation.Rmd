@@ -54,9 +54,10 @@ artsobs_raw_joined <- bind_rows(artsobs_data_list)
 artsobs_matched <- match_to_lake(artsobs_raw_joined, lakes, max_dist_from_lake = 50)[[1]] 
 
 artsobs <- artsobs_matched %>% 
-  mutate(occurenceStatus = as.logical(mapvalues(occurrenceStatus, c("ABSENT", "PRESENT"), c(FALSE,TRUE)))) %>% 
+  mutate(occurrenceStatus = ifelse(occurrenceStatus == "PRESENT", 1, 0)) %>% 
   st_set_geometry(NULL) %>% 
-  mutate(species = sub(" .*", "", str_replace(species, " ", "_")))
+  mutate(species = sub(" .*", "", str_replace(species, " ", "_"))) %>% 
+  dplyr::select(decimalLongitude, decimalLatitude, species)
 ```
 
 ## Survey data
@@ -79,16 +80,11 @@ survey_raw <- merge(occ, event, by = "eventID")
 survey_list <- match_to_lake(survey_raw, lakes, max_dist_from_lake = 50)
 survey_matched <- survey_list[[1]]
 survey <- survey_matched %>% 
-  mutate(occurrenceStatus = as.logical(mapvalues(occurrenceStatus, 
-                                c("absent", "present"), c(FALSE,TRUE)))) %>% 
+  mutate(occurrenceStatus = ifelse(occurrenceStatus == "PRESENT", 1, 0)) %>% 
     st_set_geometry(NULL) %>% 
-  mutate(species = str_replace(species, " ", "_"))
-# TODO: slightly odd that 80% of the observations are removed... Is it the non-norwegian ones?
-```
-
-## Plot the points
-```{r}
-#ggplot(survey)
+  mutate(species = str_replace(species, " ", "_")) %>% 
+  dplyr::select(occurrenceStatus, decimalLongitude, decimalLatitude, species)
+# Note: around 80% of the observations will be removed, that is because there are observations made in Sweden and Finland as well.
 ```
 
 
