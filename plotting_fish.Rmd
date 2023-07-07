@@ -43,6 +43,7 @@ norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
                                              proj4string = proj)
 ```
 
+# Before running model 
 
 ```{r}
 Data_survey_df <- readRDS("data/survey_clean_new.rds") 
@@ -130,6 +131,23 @@ p_survey_density / p_artsobs_density
 ```
 
 
+# After running model
 
+```{r}
+#trout_model <- readRDS()
+trout_predictions <- readRDS("results/trout_predictions.rds")
+```
+
+```{r, plotting the trout model}
+p <- plot(trout_predictions, whattoplot = 'mean',
+          plot = FALSE)$predictions$mean +
+#  geom_polygon(data = norway, aes(long, lat, group = group), 
+#               color="grey80", fill = "grey95") + 
+  scale_fill_gradient(low = "darkcyan", high = "gold") +
+  coord_map() +
+  theme_minimal()
+  
+p
+```
 
 
