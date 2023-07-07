@@ -37,7 +37,14 @@ I think `PointedSDMs` has a function for this, so probably rewrite some of the b
 # MAP ---------------------------------------------------------------------------------------------------------
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
-proj <- CRS("+proj=longlat +ellps=WGS84")
+#proj <- CRS("+proj=longlat +ellps=WGS84")
+proj <- CRS("+init=epsg:4326")
+#proj <- inla.CRS("longlat_norm")
+#proj <- inla.CRS(SRS_string = "+init=epsg:4326")
+#proj <- inla.CRS(SRS_string = sf::st_crs(4326))
+#crs1 <- fm_CRS("longlat_globe")
+#proj <- sf::st_crs(4326)
+#proj
 #st_crs(proj) <- 4326
 norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
                   ylim=c(58,72), xlim=c(4,32))
@@ -56,10 +63,9 @@ norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
 mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
                      cutoff = 0.3, #cutoff = 0.08,
                      max.edge = c(6, 3), 
-                     offset = c(1, 1), 
-                     crs = proj)
+                     offset = c(1, 1))
 
-
+mesh$crs <- proj
 plot(mesh)
 ```
 
@@ -67,7 +73,7 @@ plot(mesh)
 
 Next we load the observations as well as the environmental data.
 
-```{r, loading data and covariates}
+```{r, loading covariates}
 # LOADING DATA AND COVARIATES ---------------------------------------------------------------------------------
 
 # Covariates
@@ -79,8 +85,8 @@ covariateData <- readRDS("data/environmental_covariates.RDS")
 scale2 <- function(x, na.rm = FALSE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
 
 covariateData <- covariateData %>% mutate(log_area = log(area_km2)) %>% 
-  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID)) %>% 
-  dplyr::mutate_at(vars(-decimalLongitude, -decimalLatitude), scale2, na.rm = TRUE)
+  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID))
+
 
 # Choose from 
 # "decimalLatitude", "decimalLongitude",
@@ -89,9 +95,9 @@ covariateData <- covariateData %>% mutate(log_area = log(area_km2)) %>%
 Use <- c("decimalLongitude","decimalLatitude", "log_area", #"perimeter_m", 
          "eurolst_bio10", "SCI")
 
-Covariates <- covariateData %>% 
-  sf::st_as_sf(coords = c("decimalLongitude", "decimalLatitude"), 
-               crs = 4326)
+#Covariates <- covariateData %>% 
+#  sf::st_as_sf(coords = c("decimalLongitude", "decimalLatitude"), 
+#               crs = 4326)
 
 cov_pixel <- SpatialPixelsDataFrame(
   points = covariateData[,c("decimalLongitude","decimalLatitude")],
@@ -100,64 +106,53 @@ cov_pixel <- SpatialPixelsDataFrame(
 
 cov_raster <- rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
 
+#cov_raster$log_area %>% plot()
+cov_raster$log_area[is.na(cov_raster$log_area)] <- -100
+
+# TODO: Scale the covariates
+```
+
+
+```{r, loading observation data}
 # Observations
 Data_survey_df <- readRDS("data/survey_clean_new.rds") 
 Data_artsobs_df <- readRDS("data/artsobs_clean_new.rds")
-
-MakeSpDF <- function(df){
-  proj <- CRS("+proj=longlat +ellps=WGS84")
-  sp_df <- SpatialPointsDataFrame(coords = df[,c("decimalLongitude","decimalLatitude")], 
-                                  data = df[,c("occurrenceStatus","species")],
-                                  proj4string = proj)
-  colnames(sp_df@coords) = c("x", "y")
-  sp_df
-}
 ```
 
 ```{r, making spatial data frames}
 # Separating by species:
 perch_survey <- Data_survey_df %>% 
-  filter(grepl('Perca_fluviatilis', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Perca_fluviatilis', species)) 
 trout_survey <- Data_survey_df %>% 
-  filter(grepl('Salmo_trutta', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Salmo_trutta', species))
 char_survey <- Data_survey_df %>% 
-  filter(grepl('Salvelinus_alpinus', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Salvelinus_alpinus', species))
 pike_survey <- Data_survey_df %>% 
-  filter(grepl('Esox_lucius', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Esox_lucius', species))
 
 perch_artsobs <- Data_artsobs_df %>% 
-  filter(grepl('Perca_fluviatilis', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Perca_fluviatilis', species))
 trout_artsobs <- Data_artsobs_df %>% 
-  filter(grepl('Salmo_trutta', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Salmo_trutta', species))
 char_artsobs <- Data_artsobs_df %>% 
-  filter(grepl('Salvelinus_alpinus', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Salvelinus_alpinus', species))
 pike_artsobs <- Data_artsobs_df %>% 
-  filter(grepl('Esox_lucius', species)) %>% 
-  MakeSpDF()
+  filter(grepl('Esox_lucius', species))
 
 # All four species:
-four_fish_artsobs <- Data_artsobs_df %>%
-  MakeSpDF()
-four_fish_survey <- Data_survey_df %>%
-  MakeSpDF()
+four_fish_artsobs <- Data_artsobs_df 
+four_fish_survey <- Data_survey_df 
 ```
 
+Make artsobs occurrence status true/false
 ## Fitting the model
 ```{r, fitting a single-species model}
 trout_setup <- intModel(trout_artsobs, 
                         trout_survey,
                         spatialCovariates = cov_raster,
-                        Coordinates = c("x", "y"), 
+                        Coordinates = c("decimalLongitude", "decimalLatitude"), 
                         Mesh = mesh, 
                         responsePA = "occurrenceStatus",
-                        responseCounts = "occurenceStatus", # Not sure if needed since we don't have counts?
                         Projection = proj)
 trout_setup$specifySpatial(sharedSpatial = TRUE, 
                            prior.range = c(10, 0.1),
@@ -168,24 +163,22 @@ trout_model <- fitISDM(trout_setup)
 
 summary(trout_model)
 
-#saveRDS(trout_model, "results/trout_model.rds")
+saveRDS(trout_model, "results/trout_model.rds")
 ```
 
 
-```{r, plotting the trout model, eval = FALSE}
-projections <- predict(trout_model, mesh = mesh, mask = norway.poly, 
+```{r, predicting from the trout model}
+trout_predictions <- predict(trout_model, mesh = mesh, mask = norway.poly, 
                        spatial = TRUE,
                        fun = 'linear', n.samples = 1000)
+saveRDS(trout_predictions, "results/trout_predictions.rds")
 
-plot(projections, whattoplot = 'mean', 
-     colourLow = 'orange', colourHigh = 'dark red') 
-  
+plot(trout_predictions, whattoplot = 'mean', 
+     colourLow = 'gold', colourHigh = 'darkcyan') 
 ```
 
 
 # Joint model for four fish species
-
-
 
 ```{r, fitting four fish data, eval = FALSE}
 # For this model we have:
@@ -194,15 +187,15 @@ plot(projections, whattoplot = 'mean',
 #   but separate for each fish species.
 
 four_fish_setup <- intModel(
-  four_fish_survey,               # Survey data
-  four_fish_artsobs,              # Citizen science data
-  spatialCovariates = cov_raster, # Covariates
-  speciesName = "species",        # The column containing species name
-  speciesSpatial = TRUE,          # Should the species have their own sp. field?
-  Coordinates = c("x", "y"),      # Names of the coordinate variables
-  responsePA = "occurrenceStatus",# What is the name of the response column?
-  Mesh = mesh,                    # inla mesh object
-  Projection = proj)              # CRS for points and covariates
+  four_fish_survey,                    # Survey data
+  four_fish_artsobs,                   # Citizen science data
+  spatialCovariates = cov_raster,      # Covariates
+  speciesName = "species",             # The column containing species name
+  speciesSpatial = TRUE,               # Should the species have their own sp. field?
+  Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
+  responsePA = "occurrenceStatus",     # What is the name of the response column?
+  Mesh = mesh,                         # inla mesh object
+  Projection = proj)                   # CRS for points and covariates
 
 # Set prior for shared spatial field
 trout_setup$specifySpatial(sharedSpatial = TRUE, 
