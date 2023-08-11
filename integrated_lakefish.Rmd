@@ -145,13 +145,15 @@ four_fish_survey <- Data_survey_df
 ```
 
 Make artsobs occurrence status true/false
-## Fitting the model
+
+## Fitting a single species model
 ```{r, fitting a single-species model}
 trout_setup <- intModel(trout_artsobs, 
                         trout_survey,
                         spatialCovariates = cov_raster,
                         Coordinates = c("decimalLongitude", "decimalLatitude"), 
                         Mesh = mesh, 
+                        pointsSpatial = "copy",
                         responsePA = "occurrenceStatus",
                         Projection = proj)
 trout_setup$specifySpatial(sharedSpatial = TRUE, 
@@ -164,16 +166,31 @@ trout_model <- fitISDM(trout_setup)
 summary(trout_model)
 
 saveRDS(trout_model, "results/trout_model.rds")
+trout_model <- readRDS("results/trout_model.rds")
 ```
 
 
-```{r, predicting from the trout model}
-trout_predictions <- predict(trout_model, mesh = mesh, mask = norway.poly, 
-                       spatial = TRUE,
-                       fun = 'linear', n.samples = 1000)
-saveRDS(trout_predictions, "results/trout_predictions.rds")
+```{r, plotting shared field from the trout model, eval = FALSE}
+# Predict shared field
+trout_sharedfield <- predict(trout_model, mesh = mesh, mask = norway.poly, 
+                             spatial = TRUE, fun = 'linear', n.samples = 1000)
 
-plot(trout_predictions, whattoplot = 'mean', 
+saveRDS(trout_sharedfield, "results/trout_predictions.rds")
+trout_sharedfield <- readRDS("results/trout_predictions.rds")
+
+# Plot shared spatial field
+plot(trout_sharedfield, whattoplot = 'mean', 
+     colourLow = 'gold', colourHigh = 'darkcyan') 
+```
+
+
+```{r, plotting bias field from the trout model}
+# Predict biasfield
+trout_biasfield <- predict(trout_model, mesh = mesh, mask = norway.poly, 
+                           biasfield = TRUE, fun = 'linear', 
+                           n.samples = 1000) # Should "spatial" be false herre?
+# Plot biasfield
+plot(trout_biasfield, whattoplot = 'mean',
      colourLow = 'gold', colourHigh = 'darkcyan') 
 ```
 
@@ -193,7 +210,8 @@ four_fish_setup <- intModel(
   speciesName = "species",             # The column containing species name
   speciesSpatial = TRUE,               # Should the species have their own sp. field?
   Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
-  responsePA = "occurrenceStatus",     # What is the name of the response column?
+  responsePA = "occurrenceStatus",     # Name of the response column
+  pointsSpatial = "copy",              # Use INLA's "copy" feature to create the shared spatial field
   Mesh = mesh,                         # inla mesh object
   Projection = proj)                   # CRS for points and covariates
 
