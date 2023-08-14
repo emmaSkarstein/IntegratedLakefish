@@ -23,18 +23,20 @@ library(sf)
 Toggle which model to run: 
 ```{r}
 run_trout_model <- TRUE
-rul_four_fish_model <- FALSE
+run_four_fish_model <- FALSE
 ```
 
 
-## Downloading necessary data 
-I have uploaded all the cleaned data to the "data"-folder, except for the lake polygons which are too large to include on Github. But they are easily available here: 
+## Downloading data
 
-- **Lake polygons for Norway:** Go to https://bird.unit.no/resources/9b27e8f0-55dd-442c-be73-26781dad94c8/content (click on "Innhold"-tab at the bottom of the page to download only selected sets of lakes). The object name should be Norwegian_lakes.rds, and it should be placed in a "data" folder on the top level (the same level as the R-project).
+Before you run this file, make sure you have the following files:
+
+- `data/artsobs_clean_new.rds`
+- `data/survey_clean_new.rds`
+- `data/environmental_covariates.rds`
+- `data/Norwegian_lakes.rds`
 
 ## Loading Norway map
-
-
 
 I think `PointedSDMs` has a function for this, so probably rewrite some of the below.
 
@@ -151,7 +153,6 @@ four_fish_artsobs <- Data_artsobs_df
 four_fish_survey <- Data_survey_df 
 ```
 
-Make artsobs occurrence status true/false
 
 ## Fitting a single species model
 
