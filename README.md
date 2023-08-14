@@ -1,10 +1,9 @@
 # IntegratedLakefish
 Code and reproducible research files for "The Point Process Framework for Integrated Modelling of Biodiversity Data".
 
-## Data sets
-- **Nordic presence absence:** https://gbif.vm.ntnu.no/ipt/resource?r=fish_status_survey_of_nordic_lakes 
-- **Transcriptions of Norwegian gillnet test-fishing:** https://gbif.vm.ntnu.no/ipt/resource?r=transcribed_gillnet_test_fishing_data_norway
-- **Huitfeldt Kaas: Freswhater fish distribution in Norway 1918:** https://www.gbif.org/dataset/e306fa70-381e-4330-8e68-1f447b46a850
-- **Resampling Huitfeldt-Kaas: Freshwater fish distribution in south-eastern Norway in 2019:** https://www.gbif.org/dataset/24686a9b-dab1-4860-a218-000d224ba597
-- **PIKE (Swedish data):** https://gbif.vm.ntnu.no/ipt/resource?r=pike 
+## Getting started
+Follow these steps to reproduce our results! (note: the model itself takes a while to run, the single species model takes ~1 hour when run on a server, while the four species model takes even longer (how long?))
 
+1. **Dowload lake polygons for Norway:** Go to https://bird.unit.no/resources/9b27e8f0-55dd-442c-be73-26781dad94c8/content (click on "Innhold"-tab at the bottom of the page to download only selected sets of lakes). The object name should be Norwegian_lakes.rds, and it should be placed in a "data" folder on the top level (the same level as the R-project).
+2. **Get species observations:** Run the file `data_preparation.rmd` to download the citizen science data from GBIF and clean it along with the survey data.
+3. **Fit the species distribution model:** Run the file `integrated_lakefish.rmd` to fit the model.
