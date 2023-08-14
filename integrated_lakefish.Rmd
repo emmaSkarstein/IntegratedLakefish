@@ -45,19 +45,19 @@ I think `PointedSDMs` has a function for this, so probably rewrite some of the b
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
 #proj <- CRS("+proj=longlat +ellps=WGS84")
-proj <- CRS("+init=epsg:4326")
+proj <- "+init=epsg:4326"
 #proj <- inla.CRS("longlat_norm")
 #proj <- inla.CRS(SRS_string = "+init=epsg:4326")
 #proj <- inla.CRS(SRS_string = sf::st_crs(4326))
 #crs1 <- fm_CRS("longlat_globe")
 #proj <- sf::st_crs(4326)
-#proj
+proj <- '+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs'
 #st_crs(proj) <- 4326
 norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
                   ylim=c(58,72), xlim=c(4,32))
 IDs <- sapply(strsplit(norwayfill$names, ":"), function(x) x[1])
 norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs, 
-                                             proj4string = proj)
+                                             proj4string = CRS('+proj=utm +zone=32 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'))
 ```
 
 ```{r, make mesh}
@@ -70,9 +70,9 @@ norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
 mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
                      cutoff = 0.3, #cutoff = 0.08,
                      max.edge = c(6, 3), 
-                     offset = c(1, 1))
+                     offset = c(1, 1),
+                     crs = st_crs(proj))
 
-mesh$crs <- proj
 plot(mesh)
 ```
 
@@ -109,12 +109,16 @@ covariates <- covariates_raw %>%
 Use <- c("decimalLongitude","decimalLatitude", "log_area",
          "eurolst_bio10", "SCI")
 
+
+
 cov_pixel <- SpatialPixelsDataFrame(
   points = covariates[,c("decimalLongitude","decimalLatitude")],
   data = covariates[,Use], 
-  proj4string = proj, tol = 0.340571)
+  proj4string = CRS('+proj=utm +zone=32 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'), tol = 0.340571)
 
-cov_raster <- rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
+cov_raster <- scale(terra::rast(cov_pixel))
+  
+  #rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
 
 #cov_raster$log_area %>% plot()
 #cov_raster$log_area[is.na(cov_raster$log_area)] <- -100
@@ -172,7 +176,11 @@ trout_setup$specifySpatial(sharedSpatial = TRUE,
                            prior.sigma = c(0.1, 0.1))
 trout_setup$addBias("trout_artsobs")
 
-trout_model <- fitISDM(trout_setup)
+trout_model <- fitISDM(trout_setup, options =
+                         list(control.inla=list(int.strategy = 'eb',
+                                                cmin = 0),
+                                                safe = TRUE,
+                              inla.mode = 'experimental'))
 
 summary(trout_model)
 
@@ -184,21 +192,22 @@ summary(trout_model)
 
 ```{r, plotting shared field from the trout model, eval = FALSE}
 # Predict shared field
-trout_sharedfield <- predict(trout_model, mesh = mesh, mask = norway.poly, 
+trout_sharedfield <- predict(trout_model, mesh = mesh, mask = norway.poly, format = 'sp',
                              spatial = TRUE, fun = 'linear', n.samples = 1000)
 
 saveRDS(trout_sharedfield, "results/trout_sharedfield.rds")
 trout_sharedfield <- readRDS("results/trout_sharedfield.rds")
 
 # Plot shared spatial field
-plot(trout_sharedfield, whattoplot = 'mean', 
-     colourLow = 'gold', colourHigh = 'darkcyan') 
+ggplot() +
+  gg(trout_sharedfield$predictions)
+
 ```
 
 
 ```{r, plotting bias field from the trout model, eval = FALSE}
 # Predict biasfield
-trout_biasfield <- predict(trout_model, mesh = mesh, mask = norway.poly, 
+trout_biasfield <- predict(trout_model, mesh = mesh, mask = norway.poly, format = 'sp',
                            biasfield = TRUE, #datasets = trout_artsobs,
                            fun = 'linear', n.samples = 1000) # Should "spatial" be false here?
 
@@ -206,8 +215,8 @@ saveRDS(trout_biasfield, "results/trout_biasfield.rds")
 trout_biasfield <- readRDS("results/trout_biasfield.rds")
 
 # Plot biasfield
-plot(trout_biasfield, whattoplot = 'mean',
-     colourLow = 'gold', colourHigh = 'darkcyan') 
+ggplot() +
+  gg(trout_biasfield$biasFields$trout_artsobs)
 ```
 
 
@@ -239,7 +248,7 @@ four_fish_setup$specifySpatial(sharedSpatial = TRUE,
                            prior.sigma = c(0.1, 0.1))
 
 # Add bias field (shared across all species)
-four_fish_setup$addBias("four_fish_artsobs")
+four_fish_setup$addBias("four_fish_artsobs") 
 
 four_fish_model <- fitISDM(four_fish_setup)
 
