@@ -10,7 +10,7 @@ As a start, I think we can try to redo [this analysis](https://htmlpreview.githu
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r, loading packages}
+```{r, loading packages, message = FALSE}
 library(PointedSDMs)
 library(ggplot2)
 library(raster)
@@ -20,16 +20,23 @@ library(tidyverse)
 library(sf)
 ```
 
+Toggle which model to run: 
+```{r}
+run_trout_model <- TRUE
+run_four_fish_model <- FALSE
+```
 
 
-## Downloading necessary data 
-I have uploaded all the cleaned data to the "data"-folder, except for the lake polygons which are too large to include on Github. But they are easily available here: 
+## Downloading data
 
-- **Lake polygons for Norway:** Go to https://bird.unit.no/resources/9b27e8f0-55dd-442c-be73-26781dad94c8/content (click on "Innhold"-tab at the bottom of the page to download only selected sets of lakes). The object name should be Norwegian_lakes.rds, and it should be placed in a "data" folder on the top level (the same level as the R-project).
+Before you run this file, make sure you have the following files:
+
+- `data/artsobs_clean_new.rds`
+- `data/survey_clean_new.rds`
+- `data/environmental_covariates.rds`
+- `data/Norwegian_lakes.rds`
 
 ## Loading Norway map
-
-
 
 I think `PointedSDMs` has a function for this, so probably rewrite some of the below.
 
@@ -38,19 +45,19 @@ I think `PointedSDMs` has a function for this, so probably rewrite some of the b
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
 #proj <- CRS("+proj=longlat +ellps=WGS84")
-proj <- CRS("+init=epsg:4326")
+proj <- "+init=epsg:4326"
 #proj <- inla.CRS("longlat_norm")
 #proj <- inla.CRS(SRS_string = "+init=epsg:4326")
 #proj <- inla.CRS(SRS_string = sf::st_crs(4326))
 #crs1 <- fm_CRS("longlat_globe")
 #proj <- sf::st_crs(4326)
-#proj
+proj <- '+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs'
 #st_crs(proj) <- 4326
 norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
                   ylim=c(58,72), xlim=c(4,32))
 IDs <- sapply(strsplit(norwayfill$names, ":"), function(x) x[1])
 norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs, 
-                                             proj4string = proj)
+                                             proj4string = CRS('+proj=utm +zone=32 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'))
 ```
 
 ```{r, make mesh}
@@ -63,9 +70,9 @@ norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
 mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
                      cutoff = 0.3, #cutoff = 0.08,
                      max.edge = c(6, 3), 
-                     offset = c(1, 1))
+                     offset = c(1, 1),
+                     crs = st_crs(proj))
 
-mesh$crs <- proj
 plot(mesh)
 ```
 
@@ -77,39 +84,45 @@ Next we load the observations as well as the environmental data.
 # LOADING DATA AND COVARIATES ---------------------------------------------------------------------------------
 
 # Covariates
-covariateData <- readRDS("data/environmental_covariates.RDS")
+covariates_raw <- readRDS("data/environmental_covariates.RDS")
 # covariateData <- covariateData[complete.cases(covariateData$decimalLatitude,
 #                                               covariateData$decimalLongitude,
 #                                               covariateData$area_km2,
 #                                               covariateData$HFP),]
-scale2 <- function(x, na.rm = FALSE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
 
-covariateData <- covariateData %>% mutate(log_area = log(area_km2)) %>% 
-  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID))
+covariates <- covariates_raw %>% 
+  # Log-transform area of lake
+  dplyr::mutate(log_area = log(area_km2)) %>% 
+  # Remove some uninformative variables
+  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID)) %>% 
+  # Center some of the covariates
+  dplyr::mutate(across(c(log_area, perimeter_m, distance_to_road, 
+                         eurolst_bio10, catchment_area_km2, SCI, HFP), 
+                       ~ c(scale(., scale = FALSE))))
 
 
 # Choose from 
 # "decimalLatitude", "decimalLongitude",
-# "area_km2", "perimeter_m", "distance_to_road", 
+# "log_area", "perimeter_m", "distance_to_road", 
 # "eurolst_bio10", "catchment_area_km2", "SCI", "HFP"
-Use <- c("decimalLongitude","decimalLatitude", "log_area", #"perimeter_m", 
+
+Use <- c("decimalLongitude","decimalLatitude", "log_area",
          "eurolst_bio10", "SCI")
 
-#Covariates <- covariateData %>% 
-#  sf::st_as_sf(coords = c("decimalLongitude", "decimalLatitude"), 
-#               crs = 4326)
+
 
 cov_pixel <- SpatialPixelsDataFrame(
-  points = covariateData[,c("decimalLongitude","decimalLatitude")],
-  data = covariateData[,Use], 
-  proj4string = proj, tol = 0.340571)
+  points = covariates[,c("decimalLongitude","decimalLatitude")],
+  data = covariates[,Use], 
+  proj4string = CRS('+proj=utm +zone=32 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'), tol = 0.340571)
 
-cov_raster <- rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
+cov_raster <- scale(terra::rast(cov_pixel))
+  
+  #rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
 
 #cov_raster$log_area %>% plot()
-cov_raster$log_area[is.na(cov_raster$log_area)] <- -100
+#cov_raster$log_area[is.na(cov_raster$log_area)] <- -100
 
-# TODO: Scale the covariates
 ```
 
 
@@ -144,14 +157,18 @@ four_fish_artsobs <- Data_artsobs_df
 four_fish_survey <- Data_survey_df 
 ```
 
-Make artsobs occurrence status true/false
-## Fitting the model
-```{r, fitting a single-species model}
+
+## Fitting a single species model
+
+STATUS: Doesn't work, I get error that "The Newton-Raphson optimizer did not converge". 
+
+```{r, fitting a single-species model, eval = run_trout_model}
 trout_setup <- intModel(trout_artsobs, 
                         trout_survey,
                         spatialCovariates = cov_raster,
                         Coordinates = c("decimalLongitude", "decimalLatitude"), 
                         Mesh = mesh, 
+                        pointsSpatial = "copy",
                         responsePA = "occurrenceStatus",
                         Projection = proj)
 trout_setup$specifySpatial(sharedSpatial = TRUE, 
@@ -159,28 +176,55 @@ trout_setup$specifySpatial(sharedSpatial = TRUE,
                            prior.sigma = c(0.1, 0.1))
 trout_setup$addBias("trout_artsobs")
 
-trout_model <- fitISDM(trout_setup)
+trout_model <- fitISDM(trout_setup, options =
+                         list(control.inla=list(int.strategy = 'eb',
+                                                cmin = 0),
+                                                safe = TRUE,
+                              inla.mode = 'experimental'))
 
 summary(trout_model)
 
 saveRDS(trout_model, "results/trout_model.rds")
+trout_model <- readRDS("results/trout_model.rds")
+summary(trout_model)
 ```
 
 
-```{r, predicting from the trout model}
-trout_predictions <- predict(trout_model, mesh = mesh, mask = norway.poly, 
-                       spatial = TRUE,
-                       fun = 'linear', n.samples = 1000)
-saveRDS(trout_predictions, "results/trout_predictions.rds")
+```{r, plotting shared field from the trout model, eval = FALSE}
+# Predict shared field
+trout_sharedfield <- predict(trout_model, mesh = mesh, mask = norway.poly, format = 'sp',
+                             spatial = TRUE, fun = 'linear', n.samples = 1000)
 
-plot(trout_predictions, whattoplot = 'mean', 
-     colourLow = 'gold', colourHigh = 'darkcyan') 
+saveRDS(trout_sharedfield, "results/trout_sharedfield.rds")
+trout_sharedfield <- readRDS("results/trout_sharedfield.rds")
+
+# Plot shared spatial field
+ggplot() +
+  gg(trout_sharedfield$predictions)
+
+```
+
+
+```{r, plotting bias field from the trout model, eval = FALSE}
+# Predict biasfield
+trout_biasfield <- predict(trout_model, mesh = mesh, mask = norway.poly, format = 'sp',
+                           biasfield = TRUE, #datasets = trout_artsobs,
+                           fun = 'linear', n.samples = 1000) # Should "spatial" be false here?
+
+saveRDS(trout_biasfield, "results/trout_biasfield.rds")
+trout_biasfield <- readRDS("results/trout_biasfield.rds")
+
+# Plot biasfield
+ggplot() +
+  gg(trout_biasfield$biasFields$trout_artsobs)
 ```
 
 
 # Joint model for four fish species
 
-```{r, fitting four fish data, eval = FALSE}
+STATUS: Doesn't work, I get error message "`inla.mkl: tabulate-Qfunc.c:147: GMRFLib_tabulate_Qfunc_core: Assertion arg->Q->a[0] >= 0.0 failed.`"
+
+```{r, fitting four fish data, eval = run_four_fish_model}
 # For this model we have:
 # - One bias field, based on CS data and common across all species
 # - Four shared fields, shared across the data sets (survey/citizen science), 
@@ -193,17 +237,18 @@ four_fish_setup <- intModel(
   speciesName = "species",             # The column containing species name
   speciesSpatial = TRUE,               # Should the species have their own sp. field?
   Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
-  responsePA = "occurrenceStatus",     # What is the name of the response column?
+  responsePA = "occurrenceStatus",     # Name of the response column
+  pointsSpatial = "copy",              # Use INLA's "copy" feature to create the shared spatial field
   Mesh = mesh,                         # inla mesh object
   Projection = proj)                   # CRS for points and covariates
 
 # Set prior for shared spatial field
-trout_setup$specifySpatial(sharedSpatial = TRUE, 
+four_fish_setup$specifySpatial(sharedSpatial = TRUE, 
                            prior.range = c(10, 0.1),
                            prior.sigma = c(0.1, 0.1))
 
 # Add bias field (shared across all species)
-four_fish_setup$addBias("four_fish_artsobs")
+four_fish_setup$addBias("four_fish_artsobs") 
 
 four_fish_model <- fitISDM(four_fish_setup)
 
