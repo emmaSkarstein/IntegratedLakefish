@@ -192,7 +192,7 @@ ggplot() +
 
 # Joint model for four fish species
 
-STATUS: Doesn't work, I get error message "`inla.mkl: tabulate-Qfunc.c:147: GMRFLib_tabulate_Qfunc_core: Assertion arg->Q->a[0] >= 0.0 failed.`"
+STATUS: Works! But needs to be run on syvert1
 
 For this model we have:
 
@@ -254,7 +254,7 @@ ggplot() +
 
 First, we define a function to predict and plot the species-specific shared field for each of the species.
 
-```{r}
+```{r, plotting shared fields from the four fish model, eval = run_four_fish_model}
 predict_and_plot_species <- function(model, species, mask, mesh, plot_preferences){
   # Predict shared field
   sharedfield <- predict(model, 
