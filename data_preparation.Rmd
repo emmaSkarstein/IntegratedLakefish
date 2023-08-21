@@ -76,15 +76,15 @@ event <- read.table("data/survey_raw/event.txt",
 
 survey_raw <- merge(occ, event, by = "eventID")
 
-# Should the survey data be matched to lakes?
 survey_list <- match_to_lake(survey_raw, lakes, max_dist_from_lake = 50)
+# Note: around 80% of the observations will be removed, that is because there are observations made in Sweden and Finland as well.
+
 survey_matched <- survey_list[[1]]
 survey <- survey_matched %>% 
-  mutate(occurrenceStatus = ifelse(occurrenceStatus == "PRESENT", 1, 0)) %>% 
+  mutate(occurrenceStatus = ifelse(occurrenceStatus == "present", 1, 0)) %>% 
     st_set_geometry(NULL) %>% 
   mutate(species = str_replace(species, " ", "_")) %>% 
   dplyr::select(occurrenceStatus, decimalLongitude, decimalLatitude, species)
-# Note: around 80% of the observations will be removed, that is because there are observations made in Sweden and Finland as well.
 ```
 
 

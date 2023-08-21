@@ -417,13 +417,13 @@ artsobs_matched &lt;- match_to_lake(artsobs_raw_joined, lakes, max_dist_from_lak
 <pre><code>## Calculating distance to closest lake...</code></pre>
 <pre><code>## old-style crs object detected; please recreate object with a recent sf::st_crs()
 ## old-style crs object detected; please recreate object with a recent sf::st_crs()</code></pre>
-<pre><code>## Number of observations further than 50m from a lake: 1490</code></pre>
-<pre><code>## Done! We removed 39% of the original observations.</code></pre>
+<pre><code>## Number of observations further than 50m from a lake: 1570</code></pre>
+<pre><code>## Done! We removed 40% of the original observations.</code></pre>
 <pre class="r"><code>artsobs &lt;- artsobs_matched %&gt;% 
   mutate(occurrenceStatus = ifelse(occurrenceStatus == &quot;PRESENT&quot;, 1, 0)) %&gt;% 
   st_set_geometry(NULL) %&gt;% 
   mutate(species = sub(&quot; .*&quot;, &quot;&quot;, str_replace(species, &quot; &quot;, &quot;_&quot;))) %&gt;% 
-  dplyr::select(occurrenceStatus, decimalLongitude, decimalLatitude, species)</code></pre>
+  dplyr::select(decimalLongitude, decimalLatitude, species)</code></pre>
 </div>
 <div id="survey-data" class="section level2">
 <h2>Survey data</h2>
@@ -441,7 +441,6 @@ event &lt;- read.table(&quot;data/survey_raw/event.txt&quot;,
 
 survey_raw &lt;- merge(occ, event, by = &quot;eventID&quot;)
 
-# Should the survey data be matched to lakes?
 survey_list &lt;- match_to_lake(survey_raw, lakes, max_dist_from_lake = 50)</code></pre>
 <pre><code>## Transforming data and selecting variables...</code></pre>
 <pre><code>## old-style crs object detected; please recreate object with a recent sf::st_crs()</code></pre>
@@ -452,13 +451,14 @@ survey_list &lt;- match_to_lake(survey_raw, lakes, max_dist_from_lake = 50)</cod
 ## old-style crs object detected; please recreate object with a recent sf::st_crs()</code></pre>
 <pre><code>## Number of observations further than 50m from a lake: 12242</code></pre>
 <pre><code>## Done! We removed 79% of the original observations.</code></pre>
-<pre class="r"><code>survey_matched &lt;- survey_list[[1]]
+<pre class="r"><code># Note: around 80% of the observations will be removed, that is because there are observations made in Sweden and Finland as well.
+
+survey_matched &lt;- survey_list[[1]]
 survey &lt;- survey_matched %&gt;% 
-  mutate(occurrenceStatus = ifelse(occurrenceStatus == &quot;PRESENT&quot;, 1, 0)) %&gt;% 
+  mutate(occurrenceStatus = ifelse(occurrenceStatus == &quot;present&quot;, 1, 0)) %&gt;% 
     st_set_geometry(NULL) %&gt;% 
   mutate(species = str_replace(species, &quot; &quot;, &quot;_&quot;)) %&gt;% 
-  dplyr::select(occurrenceStatus, decimalLongitude, decimalLatitude, species)
-# Note: around 80% of the observations will be removed, that is because there are observations made in Sweden and Finland as well.</code></pre>
+  dplyr::select(occurrenceStatus, decimalLongitude, decimalLatitude, species)</code></pre>
 </div>
 <div id="saving-the-data" class="section level2">
 <h2>Saving the data</h2>
