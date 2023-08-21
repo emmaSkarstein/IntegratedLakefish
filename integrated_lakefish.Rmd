@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Loading packages:
 ```{r, loading packages, message = FALSE}
+#devtools::install_github("PhilipMostert/PointedSDMs")
 library(PointedSDMs) # model fitting
 library(ggplot2)     # plotting
 library(raster)      # ???? Model fitting fails if I exclude this
@@ -235,7 +236,7 @@ four_fish_model <- readRDS("results/four_fish_model.rds")
 
 Once the model has been fit, we can look at the predictions from the species-specific shared fields and the bias field.
 
-```{r, plotting shared trout field from the four fish model, eval = run_four_fish_model}
+```{r, plotting shared trout field from the four fish model, eval = FALSE}
 # Predict shared field
 four_fish_sharedfield_trout <- predict(four_fish_model, mesh = mesh, 
                                  mask = norway.poly, format = 'sp',
@@ -248,18 +249,18 @@ four_fish_sharedfield_trout <- readRDS("results/four_fish_sharedfield_trout.rds"
 
 # Plot shared spatial field
 ggplot() +
-  gg(four_fish_sharedfield_trout$predictions) +
+  gg(four_fish_sharedfield_trout$speciesPredictions[["Salmo_trutta"]]) +
   plot_preferences
 ```
 
 First, we define a function to predict and plot the species-specific shared field for each of the species.
 
-```{r, plotting shared fields from the four fish model, eval = run_four_fish_model}
-predict_and_plot_species <- function(model, species, mask, mesh, plot_preferences){
+```{r, plotting shared fields from the four fish model}
+predict_species <- function(model, species, mask, mesh){
   # Predict shared field
   sharedfield <- predict(model, 
                          mesh = mesh, 
-                         mask = maks, 
+                         mask = mask, 
                          format = 'sp',
                          spatial = TRUE, 
                          fun = 'linear', 
@@ -269,32 +270,53 @@ predict_and_plot_species <- function(model, species, mask, mesh, plot_preference
   file_name <- paste0("results/sharedfield_", species, ".rds")
   saveRDS(sharedfield, file_name)
   
+  return(sharedfield)
+}
+
+plot_species <- function(predictions, species, plot_preferences){
   # Plot shared spatial field
   p <- ggplot() +
-    gg(sharedfield$predictions) +
-    plot_preferences
+    gg(predictions$speciesPredictions[[species]]) +
+    labs(title = species) +
+    plot_preferences 
   
   return(p)
 }
 ```
 
-```{r}
+
+```{r, predict spatial fields for all four fish species, eval = run_four_fish_model}
+fishes <- c("Salmo_trutta", "Perca_fluviatilis", 
+            "Esox_lucius", "Salvelinus_alpinus")
+prediction_list <- list()
+for(fish in fishes) {
+  prediction_list[[fish]] <- predict_species(
+    model = four_fish_model,
+    mesh = mesh,
+    mask = norway.poly,
+    species = fish
+  )
+}
+```
+
+```{r, plot spatial fields for all four fish species, eval = run_four_fish_model}
 plot_list <- list()
 fishes <- c("Salmo_trutta", "Perca_fluviatilis", 
             "Esox_lucius", "Salvelinus_alpinus")
 for(fish in fishes) {
-  plot_list[[fish]] <- predict_and_plot_species(
-    four_fish_model,
+  plot_list[[fish]] <- plot_species(
+    predictions = readRDS(paste0("results/sharedfield_", fish, ".rds")),
     species = fish,
-    mask = norway.poly,
-    mesh = mesh,
     plot_preferences = plot_preferences
   )
 }
 
 library(patchwork)
 library(purrr) #for reduce
-reduce(plots, `+`)
+purrr::reduce(plot_list, `|`) | biasplot
+#ggsave("figures/shared_fields.pdf", width = 15, height = 5)
+
+#plot_list$Salmo_trutta + plot_list$Perca_fluviatilis + plot_list
 ```
 
 And finally we plot the bias field, which is shared between all the fish, as it describes the human sampling more than the distribution of the fish.
@@ -310,8 +332,9 @@ saveRDS(four_fish_biasfield, "results/four_fish_biasfield.rds")
 four_fish_biasfield <- readRDS("results/four_fish_biasfield.rds")
 
 # Plot biasfield
-ggplot() +
+biasplot <- ggplot() +
   gg(four_fish_biasfield$biasFields$four_fish_artsobs) +
+  labs(title = "Bias field")
   plot_preferences
 ```
 

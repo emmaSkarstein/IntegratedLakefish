@@ -73,7 +73,7 @@ p_artsobs <- ggplot(Data_artsobs_df, aes(x = decimalLongitude, y = decimalLatitu
         axis.title.x = element_blank(),
         axis.text.x = element_blank())
 
-p_survey <- ggplot(Data_survey_df %>% filter(occurrenceStatus == "TRUE"), 
+p_survey <- ggplot(Data_survey_df %>% filter(occurrenceStatus == 1), 
        aes(x = decimalLongitude, y = decimalLatitude)) +
   geom_polygon(data = norway, aes(long, lat, group = group), 
                color="grey80", fill = "grey95") + 
@@ -94,7 +94,7 @@ p_survey <- ggplot(Data_survey_df %>% filter(occurrenceStatus == "TRUE"),
 
 p_artsobs / p_survey
 
-ggsave("presence_points.pdf", height = 5, width = 8)
+ggsave("figures/presence_points.pdf", height = 5, width = 8)
 ```
 
 Where are the observations made in general?
@@ -128,26 +128,10 @@ p_artsobs_density <- ggplot(Data_artsobs_df,
         strip.text = element_blank())
 
 p_survey_density / p_artsobs_density
+
+ggsave("figures/density_plots.pdf", height = 5, width = 8)
+
 ```
 
-
-# After running model
-
-```{r}
-#trout_model <- readRDS()
-trout_predictions <- readRDS("results/trout_predictions.rds")
-```
-
-```{r, plotting the trout model}
-p <- plot(trout_predictions, whattoplot = 'mean',
-          plot = FALSE)$predictions$mean +
-#  geom_polygon(data = norway, aes(long, lat, group = group), 
-#               color="grey80", fill = "grey95") + 
-  scale_fill_gradient(low = "darkcyan", high = "gold") +
-  coord_map() +
-  theme_minimal()
-  
-p
-```
 
 
