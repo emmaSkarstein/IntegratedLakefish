@@ -110,7 +110,8 @@ p_survey_density <- ggplot(Data_survey_df,
   coord_map() +
   ylab("Survey data") +
   theme_minimal() +
-  theme(legend.position = "none",
+  theme(text = element_text(family = f1),
+        legend.position = "none",
         axis.title.x = element_blank())
 
 p_artsobs_density <- ggplot(Data_artsobs_df, 
@@ -123,7 +124,8 @@ p_artsobs_density <- ggplot(Data_artsobs_df,
   coord_map() +
   ylab("Citizen science data") +
   theme_minimal() +
-  theme(legend.position = "none",
+  theme(text = element_text(family = f1),
+        legend.position = "none",
         axis.title.x = element_blank(),
         strip.text = element_blank())
 
@@ -133,5 +135,54 @@ ggsave("figures/density_plots.pdf", height = 5, width = 8)
 
 ```
 
+## Plots from the model
 
+```{r}
+plot_preferences <- list(scale_fill_distiller(palette = "Spectral"),
+                         coord_map(),
+                         xlab("Longitude"),
+                         ylab("Latitude"),
+                         theme_minimal(),
+                         theme(text = element_text(family = f1))
+                         )
+```
+
+
+```{r}
+# Plot shared spatial field ----------------------------------------------------
+plot_species <- function(predictions, species, plot_preferences){
+  p <- ggplot() +
+    gg(predictions$speciesPredictions[[species]]) +
+    labs(title = species) +
+    plot_preferences 
+  
+  return(p)
+}
+
+plot_list <- list()
+fishes <- c("Salmo_trutta", "Perca_fluviatilis", 
+            "Esox_lucius", "Salvelinus_alpinus")
+for(fish in fishes) {
+  plot_list[[fish]] <- plot_species(
+    predictions = readRDS(paste0("results/sharedfield_", fish, ".rds")),
+    species = fish,
+    plot_preferences = plot_preferences
+  )
+}
+
+
+# Plot biasfield ---------------------------------------------------------------
+four_fish_biasfield <- readRDS("results/four_fish_biasfield.rds")
+
+biasplot <- ggplot() +
+  gg(four_fish_biasfield$biasFields$four_fish_artsobs) +
+  labs(title = "Bias field") +
+  plot_preferences
+```
+
+```{r}
+library(patchwork)
+purrr::reduce(plot_list, `|`) | biasplot
+ggsave("figures/fishplot.pdf", width = 15, height = 4)
+```
 
