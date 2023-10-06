@@ -211,6 +211,22 @@ four_fish_setup$specifySpatial(sharedSpatial = TRUE,
 # Add bias field (shared across all species)
 four_fish_setup$addBias("four_fish_artsobs") 
 
+# Remove spatial field that is shared across all species
+four_fish_setup$changeComponents(removeComponent = "four_fish_survey_spatial")
+four_fish_setup$changeComponents(removeComponent = "four_fish_artsobs_spatial")
+
+# Add copies for the species specific fields
+four_fish_setup$changeComponents(
+  ~ Perca_fluviatilis_artsobs_spatial(Perca_fluviatilis_artsobs_spatial, copy = "Perca_fluviatilis_spatial",
+         hyper = list(beta = list(fixed = TRUE))) +
+     Salmo_trutta_artsobs_spatial(Salmo_trutta_artsobs_spatial, copy = "Salmo_trutta_spatial",
+         hyper = list(beta = list(fixed = TRUE))) +
+     Salvelinus_alpinus_artsobs_spatial(Salvelinus_alpinus_artsobs_spatial, copy = "Salvelinus_alpinus_spatial",
+         hyper = list(beta = list(fixed = TRUE))) +
+     Esox_lucius_artsobs_spatial(Esox_lucius_artsobs_spatial, copy = "Esox_lucius_spatial",
+         hyper = list(beta = list(fixed = TRUE))))
+
+
 four_fish_model <- fitISDM(four_fish_setup, 
                            options =
                              list(control.inla=list(int.strategy = 'eb',
@@ -219,6 +235,9 @@ four_fish_model <- fitISDM(four_fish_setup,
                                   inla.mode = 'experimental'))
 
 summary(four_fish_model)
+
+#four_fish_model$.args$formula
+
 saveRDS(four_fish_model, "results/four_fish_model.rds")
 
 four_fish_model <- readRDS("results/four_fish_model.rds")
