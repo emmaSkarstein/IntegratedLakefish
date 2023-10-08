@@ -1,10 +1,14 @@
 ---
 title: "Integrated lakefish"
 output: html_document
-date: August 2023
+date: October 2023
 ---
 
 Last updated: `r format(Sys.Date(), "%B %d %Y")` at `r format(Sys.time(), "%H:%M:%S")`.
+
+```{r}
+start_time <- Sys.time()
+```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -26,7 +30,8 @@ library(sf)          # spatial stuff
 Toggle which model to run: 
 ```{r}
 run_trout_model <- FALSE
-run_four_fish_model <- TRUE
+run_two_fish_model <- TRUE
+run_four_fish_model <- FALSE
 ```
 
 ## Downloading data
@@ -116,6 +121,11 @@ trout_survey <- four_fish_survey %>%
   filter(grepl('Salmo_trutta', species))
 trout_artsobs <- four_fish_artsobs %>% 
   filter(grepl('Salmo_trutta', species))
+
+perch_survey <- four_fish_survey %>% 
+  filter(grepl('Perca_fluviatilis', species))
+perch_artsobs <- four_fish_artsobs %>% 
+  filter(grepl('Perca_fluviatilis', species))
 ```
 
 
@@ -180,6 +190,60 @@ ggplot() +
   plot_preferences
 ```
 
+# Two species model (test)
+```{r, eval = run_two_fish_model}
+two_fish_setup <- intModel(
+  trout_survey,                    # Survey data trout
+  trout_artsobs,                   # Citizen science data trout
+  perch_survey,                    # Survey data perch
+  perch_artsobs,                   # Citizen science data perch
+  spatialCovariates = cov_raster,      # Covariates
+  #speciesName = "species",             # The column containing species name
+  #speciesSpatial = "copy",               # Should the species have their own sp. field?
+  Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
+  responsePA = "occurrenceStatus",     # Name of the response column
+  pointsSpatial = "copy",              # Use INLA's "copy" feature to create the shared spatial field
+  Mesh = mesh,                         # inla mesh object
+  Projection = proj)                   # CRS for points and covariates
+
+two_fish_setup$changeComponents()
+
+# Change perch_survey_field
+## Note: changing copy = "trout_survey_spatial" to model = "trout_survey_field" 
+## means that perch_survey_field will be estimated separately, it will just be 
+## using a spatial field with the same parameters as the trout model. 
+## Or so I thought! But this doesn't seem to be working, based on the model output, where any perch spatial field is missing :(
+two_fish_setup$changeComponents(~ perch_survey_spatial(main = geometry, 
+    model = trout_survey_field))
+
+# Change perch_artsobs_spatial to be a copy of perch_survey_spatial
+two_fish_setup$changeComponents(~ perch_artsobs_spatial(main = geometry, copy = "perch_survey_spatial", hyper = list(beta = list(fixed = TRUE))))
+
+# Add bias fields for a
+two_fish_setup$addBias(c("trout_artsobs", "perch_artsobs"))
+
+# Change perch bias field to be a copy of trout bias field
+two_fish_setup$changeComponents(~ perch_artsobs_biasField(main = geometry, 
+    copy = trout_artsobs_biasField, hyper = list(beta = list(fixed = TRUE))))
+
+two_fish_setup$changeComponents()
+
+two_fish_setup$updateFormula(datasetName = "trout_survey")
+two_fish_setup$updateFormula(datasetName = "trout_artsobs")
+two_fish_setup$updateFormula(datasetName = "perch_survey")
+two_fish_setup$updateFormula(datasetName = "perch_artsobs")
+
+
+two_fish_model <- fitISDM(two_fish_setup, 
+                           options =
+                             list(control.inla=list(int.strategy = 'eb',
+                                                    cmin = 0),
+                                  safe = TRUE,
+                                  inla.mode = 'experimental'))
+
+summary(two_fish_model)
+```
+
 
 # Joint model for four fish species
 
@@ -196,7 +260,7 @@ four_fish_setup <- intModel(
   four_fish_artsobs,                   # Citizen science data
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  speciesSpatial = TRUE,               # Should the species have their own sp. field?
+  speciesSpatial = "copy",               # Should the species have their own sp. field?
   Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
   responsePA = "occurrenceStatus",     # Name of the response column
   pointsSpatial = "copy",              # Use INLA's "copy" feature to create the shared spatial field
@@ -204,27 +268,28 @@ four_fish_setup <- intModel(
   Projection = proj)                   # CRS for points and covariates
 
 # Set prior for shared spatial field
-four_fish_setup$specifySpatial(sharedSpatial = TRUE, 
-                           prior.range = c(10, 0.1),
-                           prior.sigma = c(0.1, 0.1))
+#four_fish_setup$specifySpatial(sharedSpatial = TRUE, 
+#                           prior.range = c(10, 0.1),
+#                           prior.sigma = c(0.1, 0.1))
 
+four_fish_setup$changeComponents()
 # Add bias field (shared across all species)
 four_fish_setup$addBias("four_fish_artsobs") 
 
 # Remove spatial field that is shared across all species
-four_fish_setup$changeComponents(removeComponent = "four_fish_survey_spatial")
-four_fish_setup$changeComponents(removeComponent = "four_fish_artsobs_spatial")
+#four_fish_setup$changeComponents(removeComponent = "four_fish_survey_spatial")
+#four_fish_setup$changeComponents(removeComponent = "four_fish_artsobs_spatial")
 
 # Add copies for the species specific fields
-four_fish_setup$changeComponents(
-  ~ Perca_fluviatilis_artsobs_spatial(Perca_fluviatilis_artsobs_spatial, copy = "Perca_fluviatilis_spatial",
-         hyper = list(beta = list(fixed = TRUE))) +
-     Salmo_trutta_artsobs_spatial(Salmo_trutta_artsobs_spatial, copy = "Salmo_trutta_spatial",
-         hyper = list(beta = list(fixed = TRUE))) +
-     Salvelinus_alpinus_artsobs_spatial(Salvelinus_alpinus_artsobs_spatial, copy = "Salvelinus_alpinus_spatial",
-         hyper = list(beta = list(fixed = TRUE))) +
-     Esox_lucius_artsobs_spatial(Esox_lucius_artsobs_spatial, copy = "Esox_lucius_spatial",
-         hyper = list(beta = list(fixed = TRUE))))
+# four_fish_setup$changeComponents(
+#   ~ Perca_fluviatilis_artsobs_spatial(Perca_fluviatilis_artsobs_spatial, copy = "Perca_fluviatilis_spatial",
+#          hyper = list(beta = list(fixed = TRUE))) +
+#      Salmo_trutta_artsobs_spatial(Salmo_trutta_artsobs_spatial, copy = "Salmo_trutta_spatial",
+#          hyper = list(beta = list(fixed = TRUE))) +
+#      Salvelinus_alpinus_artsobs_spatial(Salvelinus_alpinus_artsobs_spatial, copy = "Salvelinus_alpinus_spatial",
+#          hyper = list(beta = list(fixed = TRUE))) +
+#      Esox_lucius_artsobs_spatial(Esox_lucius_artsobs_spatial, copy = "Esox_lucius_spatial",
+#          hyper = list(beta = list(fixed = TRUE))))
 
 
 four_fish_model <- fitISDM(four_fish_setup, 
@@ -236,7 +301,7 @@ four_fish_model <- fitISDM(four_fish_setup,
 
 summary(four_fish_model)
 
-#four_fish_model$.args$formula
+four_fish_model$.args$formula
 
 saveRDS(four_fish_model, "results/four_fish_model.rds")
 
@@ -330,5 +395,9 @@ ggplot() +
 
 
 
+```{r}
+end_time <- Sys.time()
+knit_time <- format(end_time - start_time, format = "%H:%M")
+```
 
-Finished knitting at: `r format(Sys.Date(), "%B %d %Y")` at `r format(Sys.time(), "%H:%M:%S")`.
+This document took `r knit_time` to compile.
