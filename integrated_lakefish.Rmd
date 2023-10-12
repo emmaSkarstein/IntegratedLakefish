@@ -44,12 +44,11 @@ Before you run this file, make sure you have the following files:
 
 ## Loading Norway map
 
-I think `PointedSDMs` has a function for this, so probably rewrite some of the below.
+We begin by making a spatial mesh out of a map of Norway.
 
 ```{r, norway map}
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
-#proj <- "+init=epsg:4326"
 proj <- '+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs'
 norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
                   ylim=c(58,72), xlim=c(4,32))
@@ -64,12 +63,11 @@ mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly),
                      max.edge = c(6, 3), 
                      offset = c(1, 1),
                      crs = st_crs(proj))
-#plot(mesh)
 ```
 
-## Setting up observation and environmental data
+## Setting up covariate data
 
-Next we load the observations as well as the environmental data.
+Next we load the environmental data, which will be used as covariates.
 
 ```{r, loading covariates}
 # Covariates
@@ -79,11 +77,7 @@ covariates <- covariates_raw %>%
   # Log-transform area of lake
   dplyr::mutate(log_area = log(area_km2)) %>% 
   # Remove some uninformative variables
-  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID)) #%>% 
-  # # Center some of the covariates
-  # dplyr::mutate(across(c(log_area, perimeter_m, distance_to_road, 
-  #                        eurolst_bio10, catchment_area_km2, SCI, HFP), 
-  #                      ~ c(scale(., scale = FALSE))))
+  dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID))
 
 
 # Choose from 
@@ -91,8 +85,7 @@ covariates <- covariates_raw %>%
 # "log_area", "perimeter_m", "distance_to_road", 
 # "eurolst_bio10", "catchment_area_km2", "SCI", "HFP"
 
-Use <- c(#"decimalLongitude",#"decimalLatitude", 
-         "log_area", "eurolst_bio10", "SCI")
+Use <- c("log_area", "eurolst_bio10", "SCI")
 
 cov_pixel <- SpatialPixelsDataFrame(
   points = covariates[,c("decimalLongitude","decimalLatitude")],
@@ -101,152 +94,30 @@ cov_pixel <- SpatialPixelsDataFrame(
 
 # Scale covariates and convert to terra::rast
 cov_raster <- scale(terra::rast(cov_pixel))
-  
-#rasterize(cov_pixel, raster(cov_pixel)) %>% dropLayer('ID')
-
-#cov_raster$log_area %>% plot()
-#cov_raster$log_area[is.na(cov_raster$log_area)] <- -100
-
 ```
 
+## Observation data
+
+For this model, we have two observation sets, one which is downloaded from GBIF and one that is a survey dataset (see separate document for download instructions).
 
 ```{r, loading observation data}
 # Observations
-four_fish_survey <- readRDS("data/survey_clean_new.rds") 
-four_fish_artsobs <- readRDS("data/artsobs_clean_new.rds")
+four_fish_survey <- readRDS("data/survey_clean_new.rds") %>% 
+  filter(species != "Salvelinus_alpinus")
+four_fish_artsobs <- readRDS("data/artsobs_clean_new.rds") %>% 
+  filter(species != "Salvelinus_alpinus")
 
 # Extracting the trout data:
 trout_survey <- four_fish_survey %>% 
-  filter(grepl('Salmo_trutta', species))
+  filter(species == "Salmo_trutta")
 trout_artsobs <- four_fish_artsobs %>% 
-  filter(grepl('Salmo_trutta', species))
+  filter(species == "Salmo_trutta")
 
-perch_survey <- four_fish_survey %>% 
-  filter(grepl('Perca_fluviatilis', species))
-perch_artsobs <- four_fish_artsobs %>% 
-  filter(grepl('Perca_fluviatilis', species))
 ```
 
 
-## Fitting a single species model
+## Joint model for four fish species
 
-Status: Works and produces model object, but get message about vb.correction, so maybe model fit is not good?
-
-```{r, fitting a single-species model, eval = run_trout_model}
-trout_setup <- intModel(trout_artsobs, 
-                        trout_survey,
-                        spatialCovariates = cov_raster,
-                        Coordinates = c("decimalLongitude", "decimalLatitude"), 
-                        Mesh = mesh, 
-                        pointsSpatial = "copy",
-                        responsePA = "occurrenceStatus",
-                        Projection = proj)
-trout_setup$specifySpatial(sharedSpatial = TRUE, 
-                           prior.range = c(10, 0.1),
-                           prior.sigma = c(0.1, 0.1))
-trout_setup$addBias("trout_artsobs")
-
-trout_model <- fitISDM(trout_setup, 
-                       options = list(control.inla=list(int.strategy = 'eb',
-                                                        cmin = 0),
-                                      safe = TRUE,
-                                      inla.mode = 'experimental'))
-
-saveRDS(trout_model, "results/trout_model.rds")
-trout_model <- readRDS("results/trout_model.rds")
-summary(trout_model)
-```
-
-
-
-```{r, plotting shared field from the trout model, eval = run_trout_model}
-# Predict shared field
-trout_sharedfield <- predict(trout_model, mesh = mesh, mask = norway.poly, format = 'sp',
-                             spatial = TRUE, fun = 'linear', n.samples = 1000)
-
-saveRDS(trout_sharedfield, "results/trout_sharedfield.rds")
-trout_sharedfield <- readRDS("results/trout_sharedfield.rds")
-
-# Plot shared spatial field
-ggplot() +
-  gg(trout_sharedfield$predictions) +
-  plot_preferences
-```
-
-
-```{r, plotting bias field from the trout model, eval = run_trout_model}
-# Predict biasfield
-trout_biasfield <- predict(trout_model, mesh = mesh, mask = norway.poly, format = 'sp',
-                           biasfield = TRUE, #datasets = trout_artsobs,
-                           fun = 'linear', n.samples = 1000) # Should "spatial" be false here?
-
-saveRDS(trout_biasfield, "results/trout_biasfield.rds")
-trout_biasfield <- readRDS("results/trout_biasfield.rds")
-
-# Plot biasfield
-ggplot() +
-  gg(trout_biasfield$biasFields$trout_artsobs) +
-  plot_preferences
-```
-
-# Two species model (test)
-```{r, eval = run_two_fish_model}
-two_fish_setup <- intModel(
-  trout_survey,                    # Survey data trout
-  trout_artsobs,                   # Citizen science data trout
-  perch_survey,                    # Survey data perch
-  perch_artsobs,                   # Citizen science data perch
-  spatialCovariates = cov_raster,      # Covariates
-  #speciesName = "species",             # The column containing species name
-  #speciesSpatial = "copy",               # Should the species have their own sp. field?
-  Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
-  responsePA = "occurrenceStatus",     # Name of the response column
-  pointsSpatial = "copy",              # Use INLA's "copy" feature to create the shared spatial field
-  Mesh = mesh,                         # inla mesh object
-  Projection = proj)                   # CRS for points and covariates
-
-two_fish_setup$changeComponents()
-
-# Change perch_survey_field
-## Note: changing copy = "trout_survey_spatial" to model = "trout_survey_field" 
-## means that perch_survey_field will be estimated separately, it will just be 
-## using a spatial field with the same parameters as the trout model. 
-## Or so I thought! But this doesn't seem to be working, based on the model output, where any perch spatial field is missing :(
-two_fish_setup$changeComponents(~ perch_survey_spatial(main = geometry, 
-    model = trout_survey_field))
-
-# Change perch_artsobs_spatial to be a copy of perch_survey_spatial
-two_fish_setup$changeComponents(~ perch_artsobs_spatial(main = geometry, copy = "perch_survey_spatial", hyper = list(beta = list(fixed = TRUE))))
-
-# Add bias fields for a
-two_fish_setup$addBias(c("trout_artsobs", "perch_artsobs"))
-
-# Change perch bias field to be a copy of trout bias field
-two_fish_setup$changeComponents(~ perch_artsobs_biasField(main = geometry, 
-    copy = trout_artsobs_biasField, hyper = list(beta = list(fixed = TRUE))))
-
-two_fish_setup$changeComponents()
-
-two_fish_setup$updateFormula(datasetName = "trout_survey")
-two_fish_setup$updateFormula(datasetName = "trout_artsobs")
-two_fish_setup$updateFormula(datasetName = "perch_survey")
-two_fish_setup$updateFormula(datasetName = "perch_artsobs")
-
-
-two_fish_model <- fitISDM(two_fish_setup, 
-                           options =
-                             list(control.inla=list(int.strategy = 'eb',
-                                                    cmin = 0),
-                                  safe = TRUE,
-                                  inla.mode = 'experimental'))
-
-summary(two_fish_model)
-```
-
-
-# Joint model for four fish species
-
-STATUS: Works! But needs to be run on syvert1
 
 For this model we have:
 
@@ -279,10 +150,10 @@ four_fish_setup$addBias("four_fish_artsobs")
      Salmo_trutta_four_fish_artsobs_spatial(
        main = geometry, copy = "Salmo_trutta_four_fish_survey_spatial", 
        hyper = list(beta = list(fixed = TRUE))) +
-     Salvelinus_alpinus_four_fish_artsobs_spatial(
-       main = geometry, 
-       copy = "Salvelinus_alpinus_four_fish_survey_spatial", 
-       hyper = list(beta = list(fixed = TRUE))) + 
+     #Salvelinus_alpinus_four_fish_artsobs_spatial(
+     #  main = geometry, 
+     #  copy = "Salvelinus_alpinus_four_fish_survey_spatial", 
+     #  hyper = list(beta = list(fixed = TRUE))) + 
      Esox_lucius_four_fish_artsobs_spatial(
        main = geometry, 
        copy = "Esox_lucius_four_fish_survey_spatial", 
@@ -349,8 +220,7 @@ plot_species <- function(predictions, species){
 
 
 ```{r, predict spatial fields for all four fish species, eval = run_four_fish_model}
-fishes <- c("Salmo_trutta", "Perca_fluviatilis", 
-            "Esox_lucius", "Salvelinus_alpinus")
+fishes <- unique(four_fish_artsobs$species)
 prediction_list <- list()
 for(fish in fishes) {
   prediction_list[[fish]] <- predict_species(
@@ -364,8 +234,6 @@ for(fish in fishes) {
 
 ```{r, plot spatial fields for all four fish species, eval = run_four_fish_model}
 plot_list <- list()
-fishes <- c("Salmo_trutta", "Perca_fluviatilis", 
-            "Esox_lucius", "Salvelinus_alpinus")
 for(fish in fishes) {
   plot_list[[fish]] <- plot_species(
     predictions = readRDS(paste0("results/sharedfield_", fish, ".rds")),
