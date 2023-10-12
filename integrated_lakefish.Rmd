@@ -23,15 +23,14 @@ library(raster)      # ???? Model fitting fails if I exclude this
 library(mapproj)     # map options for plotting
 library(INLA)        # functions for specifying mesh
 library(dplyr)       # data handling
-#library(tidyverse)   
 library(sf)          # spatial stuff
 ```
 
 Toggle which model to run: 
 ```{r}
 run_trout_model <- FALSE
-run_two_fish_model <- TRUE
-run_four_fish_model <- FALSE
+run_two_fish_model <- FALSE
+run_four_fish_model <- TRUE
 ```
 
 ## Downloading data
@@ -92,8 +91,8 @@ covariates <- covariates_raw %>%
 # "log_area", "perimeter_m", "distance_to_road", 
 # "eurolst_bio10", "catchment_area_km2", "SCI", "HFP"
 
-Use <- c("decimalLongitude",#"decimalLatitude", 
-         "log_area","eurolst_bio10")#, "SCI")
+Use <- c(#"decimalLongitude",#"decimalLatitude", 
+         "log_area", "eurolst_bio10", "SCI")
 
 cov_pixel <- SpatialPixelsDataFrame(
   points = covariates[,c("decimalLongitude","decimalLatitude")],
@@ -263,33 +262,38 @@ four_fish_setup <- intModel(
   speciesSpatial = "copy",               # Should the species have their own sp. field?
   Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
   responsePA = "occurrenceStatus",     # Name of the response column
-  pointsSpatial = "copy",              # Use INLA's "copy" feature to create the shared spatial field
+  pointsSpatial = NULL,              # Use INLA's "copy" feature to create the shared spatial field
   Mesh = mesh,                         # inla mesh object
   Projection = proj)                   # CRS for points and covariates
 
-# Set prior for shared spatial field
-#four_fish_setup$specifySpatial(sharedSpatial = TRUE, 
-#                           prior.range = c(10, 0.1),
-#                           prior.sigma = c(0.1, 0.1))
 
-four_fish_setup$changeComponents()
 # Add bias field (shared across all species)
 four_fish_setup$addBias("four_fish_artsobs") 
 
-# Remove spatial field that is shared across all species
-#four_fish_setup$changeComponents(removeComponent = "four_fish_survey_spatial")
-#four_fish_setup$changeComponents(removeComponent = "four_fish_artsobs_spatial")
+# Remove beta (scaling parameter for copied spatial fields)
+ four_fish_setup$changeComponents(
+   ~ Perca_fluviatilis_four_fish_artsobs_spatial(
+       main = geometry, 
+       copy = "Perca_fluviatilis_four_fish_survey_spatial", 
+       hyper = list(beta = list(fixed = TRUE))) + 
+     Salmo_trutta_four_fish_artsobs_spatial(
+       main = geometry, copy = "Salmo_trutta_four_fish_survey_spatial", 
+       hyper = list(beta = list(fixed = TRUE))) +
+     Salvelinus_alpinus_four_fish_artsobs_spatial(
+       main = geometry, 
+       copy = "Salvelinus_alpinus_four_fish_survey_spatial", 
+       hyper = list(beta = list(fixed = TRUE))) + 
+     Esox_lucius_four_fish_artsobs_spatial(
+       main = geometry, 
+       copy = "Esox_lucius_four_fish_survey_spatial", 
+       hyper = list(beta = list(fixed = TRUE))))
 
-# Add copies for the species specific fields
-# four_fish_setup$changeComponents(
-#   ~ Perca_fluviatilis_artsobs_spatial(Perca_fluviatilis_artsobs_spatial, copy = "Perca_fluviatilis_spatial",
-#          hyper = list(beta = list(fixed = TRUE))) +
-#      Salmo_trutta_artsobs_spatial(Salmo_trutta_artsobs_spatial, copy = "Salmo_trutta_spatial",
-#          hyper = list(beta = list(fixed = TRUE))) +
-#      Salvelinus_alpinus_artsobs_spatial(Salvelinus_alpinus_artsobs_spatial, copy = "Salvelinus_alpinus_spatial",
-#          hyper = list(beta = list(fixed = TRUE))) +
-#      Esox_lucius_artsobs_spatial(Esox_lucius_artsobs_spatial, copy = "Esox_lucius_spatial",
-#          hyper = list(beta = list(fixed = TRUE))))
+# Check that components look as expected
+four_fish_setup$changeComponents()
+
+# Check that formulas look as expected
+four_fish_setup$updateFormula(datasetName = "four_fish_survey")
+four_fish_setup$updateFormula(datasetName = "four_fish_artsobs")
 
 
 four_fish_model <- fitISDM(four_fish_setup, 
