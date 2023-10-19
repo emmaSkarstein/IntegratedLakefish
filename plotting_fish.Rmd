@@ -10,7 +10,7 @@ date: "October 2023"
 knitr::opts_chunk$set(echo = TRUE, fig.showtext = TRUE)
 ```
 
-```{r}
+```{r, message=FALSE, warning = FALSE}
 library(PointedSDMs)
 library(ggplot2)
 library(raster)
@@ -20,6 +20,7 @@ library(tidyverse)
 library(sf)
 library(patchwork)
 library(showtext)
+library(hexbin)
 
 showtext_auto()
 
