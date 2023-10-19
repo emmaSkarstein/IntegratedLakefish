@@ -6,12 +6,12 @@ date: October 2023
 
 Last updated: `r format(Sys.Date(), "%B %d %Y")` at `r format(Sys.time(), "%H:%M:%S")`.
 
-```{r}
+```{r, echo = FALSE}
 start_time <- Sys.time()
 ```
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, fig.fullwidth=TRUE)
 ```
 
 Loading packages:
@@ -26,12 +26,6 @@ library(dplyr)       # data handling
 library(sf)          # spatial stuff
 ```
 
-Toggle which model to run: 
-```{r}
-run_trout_model <- FALSE
-run_two_fish_model <- FALSE
-run_four_fish_model <- TRUE
-```
 
 ## Downloading data
 
@@ -42,13 +36,17 @@ Before you run this file, make sure you have the following files:
 - `data/environmental_covariates.rds`
 - `data/Norwegian_lakes.rds`
 
+This model may take quite a while to run (approx. 6 hours with the final settings that were used for the paper). To run a faster version, it is possible to use less integration points in the mesh, this is described below.
+
 ## Loading Norway map
 
 We begin by making a spatial mesh out of a map of Norway.
 
 ```{r, norway map}
-norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
-norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
+#norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
+#norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
+#norway_sf <- st_as_sf(norway, coords = c("long", "lat"), crs = proj)
+
 proj <- '+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs'
 norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
                   ylim=c(58,72), xlim=c(4,32))
@@ -57,13 +55,28 @@ norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
                                              proj4string = CRS(proj))
 ```
 
+
 ```{r, make mesh}
 mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
-                     cutoff = 0.3, #cutoff = 0.08,
+                     #cutoff = 0.3, # smallest allowed distance between points
+                     max.edge = 1, # increase this for fewer integration points
+                     offset = c(0.5, 0.5), # points outside Norway as well
+                     #offset = 0.5, # only points inside Norway
+                     crs = st_crs(proj))
+
+plot(mesh)
+```
+The mech we used for the final results in the paper is quite fine, if you would like to run a faster version for testing purposes it is possible to use a rougher mesh. You can either tweak the above mesh yourself, or try this version:
+
+```{r, eval = FALSE}
+mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
+                     cutoff = 0.3, 
                      max.edge = c(6, 3), 
                      offset = c(1, 1),
                      crs = st_crs(proj))
+plot(mesh)
 ```
+
 
 ## Setting up covariate data
 
@@ -79,7 +92,6 @@ covariates <- covariates_raw %>%
   # Remove some uninformative variables
   dplyr::select(-c(ebint, no_vatn_lnr, eb_waterregionID))
 
-
 # Choose from 
 # "decimalLatitude", "decimalLongitude",
 # "log_area", "perimeter_m", "distance_to_road", 
@@ -90,7 +102,8 @@ Use <- c("log_area", "eurolst_bio10", "SCI")
 cov_pixel <- SpatialPixelsDataFrame(
   points = covariates[,c("decimalLongitude","decimalLatitude")],
   data = covariates[,Use], 
-  proj4string = CRS(proj), tol = 0.340571)
+  proj4string = CRS(proj), 
+  tol = 0.340571)
 
 # Scale covariates and convert to terra::rast
 cov_raster <- scale(terra::rast(cov_pixel))
@@ -102,46 +115,66 @@ For this model, we have two observation sets, one which is downloaded from GBIF 
 
 ```{r, loading observation data}
 # Observations
-four_fish_survey <- readRDS("data/survey_clean_new.rds") %>% 
-  filter(species != "Salvelinus_alpinus")
-four_fish_artsobs <- readRDS("data/artsobs_clean_new.rds") %>% 
-  filter(species != "Salvelinus_alpinus")
-
-# Extracting the trout data:
-trout_survey <- four_fish_survey %>% 
-  filter(species == "Salmo_trutta")
-trout_artsobs <- four_fish_artsobs %>% 
-  filter(species == "Salmo_trutta")
+four_fish_survey <- readRDS("data/survey_clean_new.rds") #%>% 
+  #filter(species != "Salvelinus_alpinus")
+four_fish_artsobs <- readRDS("data/artsobs_clean_new.rds") #%>% 
+  #filter(species != "Salvelinus_alpinus")
 
 ```
 
 
 ## Joint model for four fish species
 
+For the presence/absence survey data, we use a Bernoulli distribution, where the presence probability depends on some covariates $x(s)$, along with a spatial field $\xi_{j}(s)$  for species $j\in \{\textit{Salmo trutta, Perca fluvatilis, Esox lucius, Salvelinus alpinus}\}$,
+$$
+\begin{align}
+    Y_{PA, j}(s_i) &\sim \text{Bernoulli}(p_{PA, j}(s_i)) \\
+    \text{cloglog}(p_{PA, j}(s_i)) &= \alpha_{PA, j} + x(s_i)^T\beta_j + \xi_{j}(s_i).
+\end{align}
+$$
+The presence-only data is fitted with a Poisson point process model, where the intensity depends on the same covariates $x(s)$ and the same spatial field $\xi_{j}(s)$, plus an additional spatial field $\xi_{\text{bias}}(s)$ that is unique to the citizen science data, but shared across all fish species:
+$$
+\begin{align}
+    Y_{PO, j}(s_i) &\sim \text{Poisson}(e^{\eta_{PO, j}(s_i)}) \\
+    \eta_{PO, j}(s_i) &= \alpha_{PO, j} + x(s)^T\beta_j + \xi_{j}(s_i) + \xi_{\text{bias}}(s_i).
+\end{align}
+$$
+So in summary, for this model we have:
 
-For this model we have:
-
-  - One bias field, based on CS data and common across all species
-  - Four shared fields, shared across the data sets (survey/citizen science), but separate for each fish species.
+  - one bias field, based on CS data and common across all species
+  - four shared fields, shared across the data sets (survey/citizen science), but separate for each fish species.
   
-```{r, fitting four fish data, eval = run_four_fish_model}
+Since we have two data sets and four species, that means that we in total have eight sub-models.
+
+We first prepare the model using the `intModel` function.
+  
+```{r, fitting four fish data, warning=FALSE}
 four_fish_setup <- intModel(
   four_fish_survey,                    # Survey data
   four_fish_artsobs,                   # Citizen science data
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  speciesSpatial = "copy",               # Should the species have their own sp. field?
+  speciesSpatial = "copy",             # Should the species have their own sp. field?
   Coordinates = c("decimalLongitude", "decimalLatitude"), # Names of the coordinate variables
   responsePA = "occurrenceStatus",     # Name of the response column
   pointsSpatial = NULL,              # Use INLA's "copy" feature to create the shared spatial field
   Mesh = mesh,                         # inla mesh object
   Projection = proj)                   # CRS for points and covariates
+```
 
+This model has the species specific spatial fields, but we also want a bias field that is shared across the species. We add this using `$addBias`.
 
+```{r, fitting four fish data, warning=FALSE}
 # Add bias field (shared across all species)
-four_fish_setup$addBias("four_fish_artsobs") 
+four_fish_setup$addBias("four_fish_artsobs")
+```
 
+For the species specific fields, the default in PointedSDMs is that these are allowed to be different up to a scaling factor (named beta in INLA) across the data sets. That means that for instance the trout-specific spatial field for the citizen science data set is equal to beta times the trout-specific spatial field for the survey data. In practice, this has to do with the copy-option in INLA. But in our model we want them to be the same, not to vary by a factor. So we manually change this using the `$changeComponents` function, by setting `hyper = list(beta = list(fixed = TRUE))` for each of the four citizen science fields.
+
+```{r, fitting four fish data, warning=FALSE}
 # Remove beta (scaling parameter for copied spatial fields)
+# Note: The only change to the components here is to make beta = list(fixed = TRUE)
+#  instead of FALSE.
  four_fish_setup$changeComponents(
    ~ Perca_fluviatilis_four_fish_artsobs_spatial(
        main = geometry, 
@@ -150,42 +183,57 @@ four_fish_setup$addBias("four_fish_artsobs")
      Salmo_trutta_four_fish_artsobs_spatial(
        main = geometry, copy = "Salmo_trutta_four_fish_survey_spatial", 
        hyper = list(beta = list(fixed = TRUE))) +
-     #Salvelinus_alpinus_four_fish_artsobs_spatial(
-     #  main = geometry, 
-     #  copy = "Salvelinus_alpinus_four_fish_survey_spatial", 
-     #  hyper = list(beta = list(fixed = TRUE))) + 
+     Salvelinus_alpinus_four_fish_artsobs_spatial(
+      main = geometry,
+      copy = "Salvelinus_alpinus_four_fish_survey_spatial",
+      hyper = list(beta = list(fixed = TRUE))) +
      Esox_lucius_four_fish_artsobs_spatial(
        main = geometry, 
        copy = "Esox_lucius_four_fish_survey_spatial", 
        hyper = list(beta = list(fixed = TRUE))))
+```
 
-# Check that components look as expected
+We may look at the components that are included in the model by calling `$changeComponents` with no arguments:
+
+```{r, fitting four fish data, warning=FALSE}
 four_fish_setup$changeComponents()
+```
 
+And we may look at which terms are included in each of the eight sub-models by calling `$updateFormula` with the data sets as the arguments.
+
+```{r, fitting four fish data, warning=FALSE}
 # Check that formulas look as expected
 four_fish_setup$updateFormula(datasetName = "four_fish_survey")
 four_fish_setup$updateFormula(datasetName = "four_fish_artsobs")
+```
 
+Finally, we actually fit the model using `fitISDM`. 
 
+```{r, fitting four fish data, warning=FALSE}
 four_fish_model <- fitISDM(four_fish_setup, 
                            options =
                              list(control.inla=list(int.strategy = 'eb',
                                                     cmin = 0),
                                   safe = TRUE,
                                   inla.mode = 'experimental'))
+```
 
+We may then examine the model summary and save the model for future use.
+
+```{r, fitting four fish data, warning=FALSE}
 summary(four_fish_model)
-
-four_fish_model$.args$formula
 
 saveRDS(four_fish_model, "results/four_fish_model.rds")
 
 four_fish_model <- readRDS("results/four_fish_model.rds")
 ```
 
+## Predictions and plots
+
 Once the model has been fit, we can look at the predictions from the species-specific shared fields and the bias field.
 
-First, we define a function to predict and plot the species-specific shared field for each of the species.
+
+We define a function that will do species-specific predictions, and save the species predictions, since these take a little time to compute.
 
 ```{r, plotting shared fields from the four fish model}
 predict_species <- function(model, species, mask, mesh){
@@ -204,22 +252,9 @@ predict_species <- function(model, species, mask, mesh){
   
   return(sharedfield)
 }
-
-plot_species <- function(predictions, species){
-  # Plot shared spatial field
-  p <- ggplot() +
-    gg(predictions$speciesPredictions[[species]]) +
-    labs(title = species) +
-    coord_map() +
-    xlab("Longitude") +
-    ylab("Latitude") +
-    theme_minimal()
-  return(p)
-}
 ```
 
-
-```{r, predict spatial fields for all four fish species, eval = run_four_fish_model}
+```{r, predict spatial fields for all four fish species}
 fishes <- unique(four_fish_artsobs$species)
 prediction_list <- list()
 for(fish in fishes) {
@@ -232,27 +267,58 @@ for(fish in fishes) {
 }
 ```
 
-```{r, plot spatial fields for all four fish species, eval = run_four_fish_model}
+Once we have the predictions, we can make some plots. We similarly define a function that makes a plot for one species, and then run this for all four species.
+
+```{r, plotting shared fields from the four fish model}
+library(showtext)
+showtext_auto()
+f1 <- "Open sans"
+font_add_google(f1, f1)
+
+plot_preferences <- list(scale_fill_distiller(palette = "Spectral"), 
+                         coord_map(),
+                         xlab("Longitude"),
+                         ylab("Latitude"),
+                         theme_minimal(),
+                         theme(text = element_text(family = f1))
+)
+
+plot_species <- function(predictions, species, plot_preferences){
+  p <- ggplot() +
+    gg(predictions$speciesPredictions[[species]]) +
+    labs(title = species) +
+    plot_preferences 
+  
+  return(p)
+}
+```
+
+```{r, plot spatial fields for all four fish species}
 plot_list <- list()
 for(fish in fishes) {
   plot_list[[fish]] <- plot_species(
     predictions = readRDS(paste0("results/sharedfield_", fish, ".rds")),
-    species = fish
+    species = fish,
+    plot_preferences = plot_preferences
   )
 }
 
-library(patchwork)
-purrr::reduce(plot_list, `|`)
+patchwork::wrap_plots(plot_list, ncol = 2)
+
+ggsave("figures/fishplot_four_species.pdf", width = 7, height = 7)
 ```
 
-And finally we plot the bias field, which is shared between all the fish, as it describes the human sampling more than the distribution of the fish.
+And finally we predict and plot the bias field, which is shared between all the fish, as it describes the human sampling more than the distribution of the fish.
 
-```{r, plotting bias field from the four fish model, eval = run_four_fish_model}
+```{r, plotting bias field from the four fish model}
 # Predict biasfield
-four_fish_biasfield <- predict(four_fish_model, mesh = mesh, 
-                               mask = norway.poly, format = 'sp',
+four_fish_biasfield <- predict(four_fish_model, 
+                               mesh = mesh, 
+                               mask = norway.poly, 
+                               format = 'sp',
                                biasfield = TRUE,
-                               fun = 'linear', n.samples = 1000) # Should "spatial" be false here?
+                               fun = 'linear', 
+                               n.samples = 1000) # Should "spatial" be false here?
 
 saveRDS(four_fish_biasfield, "results/four_fish_biasfield.rds")
 four_fish_biasfield <- readRDS("results/four_fish_biasfield.rds")
@@ -261,15 +327,16 @@ four_fish_biasfield <- readRDS("results/four_fish_biasfield.rds")
 ggplot() +
   gg(four_fish_biasfield$biasFields$four_fish_artsobs) +
   labs(title = "Bias field") +
-  coord_map() +
-  theme_minimal()
+  plot_preferences
+
+ggsave("figures/fishplot_biasfield.pdf", width = 7, height = 7)
 ```
 
 
 
-```{r}
+```{r, echo = FALSE}
 end_time <- Sys.time()
-knit_time <- format(end_time - start_time, format = "%H:%M")
+knit_time <- round(difftime(end_time, start_time, units = "hours"), 2)
 ```
 
-This document took `r knit_time` to compile.
+This document took `r knit_time` hours to compile.
