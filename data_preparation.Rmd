@@ -1,7 +1,19 @@
 ---
-title: "Data preparation"
-output: html_document
-date: June 2023
+title: "Model fitting, prediction and plotting"
+subtitle: "Supporting information for 'The Point Process Framework for Integrated Modelling of Biodiversity Data'"
+author: "Kwaku Peprah Adjei, Philip Mostert, Jorge Sicacha Parada, Emma Skarstein, Robert B. O'Hara"
+output: 
+  bookdown::pdf_document2:
+    toc: false
+header-includes:
+  - \geometry{top=1in}
+  - \usepackage{titling}
+  - \pretitle{\begin{flushleft}\Huge\bfseries}
+  - \posttitle{\end{flushleft}}  
+  - \preauthor{\begin{flushleft}\Large}
+  - \postauthor{\end{flushleft}}  
+  - \predate{\begin{flushleft}\large}
+  - \postdate{\end{flushleft}}
 ---
 
 ```{r setup, include=FALSE}
@@ -91,8 +103,8 @@ survey <- survey_matched %>%
 ## Saving the data
 
 ```{r}
-saveRDS(survey, "data/survey_clean_new.rds")
-saveRDS(artsobs, "data/artsobs_clean_new.rds")
+saveRDS(survey, "data/survey_clean.rds")
+saveRDS(artsobs, "data/artsobs_clean.rds")
 ```
 
 

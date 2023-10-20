@@ -46,3 +46,5 @@ vignettes/*.pdf
 data/Norwegian_lakes.rds
 results/trout_model.rds
 results/trout_model.rds
+integrated_lakefish_files/figure-latex/plot observations-1.pdf
+integrated_lakefish_files/figure-latex/make small mesh-1.pdf
