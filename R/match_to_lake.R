@@ -1,15 +1,14 @@
-##############################################################################
+#-------------------------------------------------------------------------------
 # GENERAL DATA PREPARATION 
 # for freshwater fish data
-##############################################################################
+#
+# The match-to-lake function was originally written by Anders G. Finstad.
+#-------------------------------------------------------------------------------
 
 library(plyr)
 library(dplyr)
 library(sf)
 
-
-
-# The match-to-lake function was originally written by Anders G. Finstad.
 
 #' Match to lake
 #' 
