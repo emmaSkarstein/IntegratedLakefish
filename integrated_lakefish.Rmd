@@ -247,19 +247,22 @@ fish_model_setup$changeComponents(
   'Perca_fluviatilis_artsobs_spatial(
       main = geometry, 
       copy = "Perca_fluviatilis_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE)))')
+      hyper = list(beta = list(fixed = TRUE)))',
+  print = FALSE)
 
 fish_model_setup$changeComponents(
   'Salmo_trutta_artsobs_spatial(
       main = geometry, 
       copy = "Salmo_trutta_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE)))')
+      hyper = list(beta = list(fixed = TRUE)))',
+  print = FALSE)
 
 fish_model_setup$changeComponents(
   'Salvelinus_alpinus_artsobs_spatial(
       main = geometry,
       copy = "Salvelinus_alpinus_survey_spatial",
-      hyper = list(beta = list(fixed = TRUE)))')
+      hyper = list(beta = list(fixed = TRUE)))',
+  print = FALSE)
 
 fish_model_setup$changeComponents(
   'Esox_lucius_artsobs_spatial(
@@ -397,9 +400,22 @@ ggsave("figures/fishplot_biasfield.pdf", width = 3, height = 3)
 
 
 
+
+
+# Session info and runtime 
+
 ```{r, echo = FALSE}
 end_time <- Sys.time()
 knit_time <- round(difftime(end_time, start_time, units = "hours"), 2)
 ```
 
 This document took `r knit_time` hours to compile.
+
+```{r}
+sessioninfo::session_info(pkgs = c("INLA", "inlabru")) |> 
+  details::details(
+    summary = 'Current session info',
+    open    = TRUE
+  )
+```
+
