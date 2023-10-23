@@ -1,10 +1,8 @@
 ---
-title: "Model fitting, prediction and plotting"
-subtitle: "Supporting information for 'The Point Process Framework for Integrated Modelling of Biodiversity Data'"
+title: "Supporting information for 'The Point Process Framework for Integrated Modelling of Biodiversity Data'"
 author: "Kwaku Peprah Adjei, Philip Mostert, Jorge Sicacha Parada, Emma Skarstein, Robert B. O'Hara"
 output: 
-  bookdown::pdf_document2:
-    toc: false
+  pdf_document
 header-includes:
   - \geometry{top=1in}
   - \usepackage{titling}
@@ -32,7 +30,10 @@ start_time <- Sys.time()
 knitr::opts_chunk$set(echo = TRUE, fig.fullwidth = TRUE)
 ```
 
-Loading packages:
+# Setup
+
+These are the packages we will be using:
+
 ```{r, loading packages, message = FALSE}
 #devtools::install_github("PhilipMostert/PointedSDMs")
 library(PointedSDMs) # model fitting
@@ -46,22 +47,20 @@ library(showtext)    # font for plot
 library(patchwork)   # combining figures
 ```
 
-Some plot settings:
-```{r}
-showtext_auto()
-f1 <- "Open sans"
-font_add_google(f1, f1)
-```
 
 
 # Downloading data
 
-Before you run this file, make sure you have the following files:
+Before you run this file, make sure you have the following files in the given locations:
 
-- `data/artsobs_clean_new.rds`
-- `data/survey_clean_new.rds`
-- `data/environmental_covariates.rds`
+- `data/environmental_covariates.rds` 
+  - should be in the data folder already.
 - `data/Norwegian_lakes.rds`
+  - can be downloaded from https://bird.unit.no/resources/9b27e8f0-55dd-442c-be73-26781dad94c8/content, click on “Innhold”-tab at the bottom of the page and select "Norwegian_lakes.rds".
+- `data/artsobs_clean.rds`
+  - created from running the script `R/data_preparation.R`, see further instructions there.
+- `data/survey_clean.rds`
+  - also created from running the script `R/data_preparation.R`, see further instructions there.
 
 
 
@@ -85,7 +84,7 @@ norway.poly <- maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
                                              proj4string = CRS(proj))
 ```
 
-Adjusting the mesh to be coarser is the easiest way to decrease the run-time for the model. With the following mesh, the model fitting takes just about 1 hour for us, but feel free to change the `max.edge` or `cutoff` to get a coarser mesh.
+Adjusting the mesh to be coarser is the easiest way to decrease the run-time for the model. With the following mesh, the model fitting takes a little more than 1 hour for us, but feel free to change the `max.edge` or `cutoff` to get a coarser mesh.
 
 ```{r, make small mesh, eval = TRUE}
 mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
@@ -135,15 +134,19 @@ For this model, we have two observation sets, one which is downloaded from GBIF 
 ```{r, loading observation data}
 fishes <- c("Esox_lucius", "Perca_fluviatilis", "Salmo_trutta", "Salvelinus_alpinus")
 
-survey <- readRDS("data/survey_clean_new.rds") %>% 
+survey <- readRDS("data/survey_clean.rds") %>% 
   filter(species %in% fishes)
-artsobs <- readRDS("data/artsobs_clean_new.rds") %>% 
+artsobs <- readRDS("data/artsobs_clean.rds") %>% 
   filter(species %in% fishes)
 ```
 
 We can plot the observed data points:
 
 ```{r, plot observations}
+showtext_auto()
+f1 <- "Open sans"
+font_add_google(f1, f1)
+
 norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
 norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
 
@@ -329,13 +332,13 @@ Once we have the predictions, we can make some plots. We similarly define a func
 ```{r, plotting shared fields from the fish model}
 plot_preferences <- list(scale_fill_distiller(palette = "BrBG", direction = 1), 
                          coord_map(),
-                         xlab(""), ylab(""), labs(fill = ""),
+                         xlab(""), ylab(""),
                          theme_minimal(),
                          theme(text = element_text(family = f1),
                                title = element_text(family = f1, size = 10),
                                legend.key.height = unit(0.3, "cm"), 
-                               legend.position = "bottom",
-                               plot.margin = margin(10, 10, 0, 10, "points"))
+                               legend.title = element_blank(),
+                               legend.position = "bottom")
 )
 
 plot_species <- function(predictions, species_to_plot, plot_preferences){
@@ -359,7 +362,7 @@ for(fish in fishes) {
 }
 
 patchwork::wrap_plots(plot_list, nrow = 1)
-ggsave("figures/fishplot_four_species.pdf", height = 2, width = 8)
+ggsave("figures/fishplot_four_species.pdf", height = 3, width = 8)
 ```
 
 And finally we predict and plot the bias field, which is shared between all the fish, as it describes the human sampling more than the distribution of the fish.
