@@ -160,7 +160,7 @@ p_artsobs <- ggplot(artsobs, aes(x = decimalLongitude, y = decimalLatitude)) +
   labs(tag = "Citizen science data") +
   theme_minimal() +
   theme(text = element_text(family = f1),
-        strip.text = element_text(family = f1, size = 12),
+        strip.text = element_text(family = f1, size = 12, face = "italic"),
         plot.tag = element_text(angle = 90, hjust = 0.5),
         plot.tag.position = c(-0.03, 0.45),
         legend.position = "none",
@@ -193,7 +193,7 @@ ggsave("figures/presence_points.pdf", height = 5, width = 8)
 
 # Joint model for four fish species
 
-For the presence/absence survey data, we use a Bernoulli distribution, where the presence probability for species $j\in \{\textit{Salmo trutta, Perca fluvatilis, Esox lucius, Salvelinus alpinus}\}$ depends on some covariates $x(s)$, along with a spatial field $\xi_{j}(s)$:
+For the presence/absence survey data, we use a Bernoulli distribution, where the presence probability for species $j\in \{\textit{Salmo trutta, Perca fluviatilis, Esox lucius, Salvelinus alpinus}\}$ depends on some covariates $x(s)$, along with a spatial field $\xi_{j}(s)$:
 
 $$
 \begin{aligned}
@@ -244,22 +244,28 @@ For the species specific fields, the default in PointedSDMs is that these are al
 
 ```{r, customizing fish model, warning=FALSE}
 fish_model_setup$changeComponents(
-  ~ Perca_fluviatilis_artsobs_spatial(
+  'Perca_fluviatilis_artsobs_spatial(
       main = geometry, 
       copy = "Perca_fluviatilis_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE))) + 
-    Salmo_trutta_artsobs_spatial(
+      hyper = list(beta = list(fixed = TRUE)))')
+
+fish_model_setup$changeComponents(
+  'Salmo_trutta_artsobs_spatial(
       main = geometry, 
       copy = "Salmo_trutta_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE))) +
-    Salvelinus_alpinus_artsobs_spatial(
+      hyper = list(beta = list(fixed = TRUE)))')
+
+fish_model_setup$changeComponents(
+  'Salvelinus_alpinus_artsobs_spatial(
       main = geometry,
       copy = "Salvelinus_alpinus_survey_spatial",
-      hyper = list(beta = list(fixed = TRUE))) +
-    Esox_lucius_artsobs_spatial(
+      hyper = list(beta = list(fixed = TRUE)))')
+
+fish_model_setup$changeComponents(
+  'Esox_lucius_artsobs_spatial(
       main = geometry, 
       copy = "Esox_lucius_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE))))
+      hyper = list(beta = list(fixed = TRUE)))')
 ```
 
 
@@ -335,7 +341,7 @@ plot_preferences <- list(scale_fill_distiller(palette = "BrBG", direction = 1),
                          xlab(""), ylab(""),
                          theme_minimal(),
                          theme(text = element_text(family = f1),
-                               title = element_text(family = f1, size = 10),
+                               title = element_text(family = f1, size = 10, face = "italic"),
                                legend.key.height = unit(0.3, "cm"), 
                                legend.title = element_blank(),
                                legend.position = "bottom")
