@@ -42,9 +42,13 @@ vignettes/*.pdf
 .DS_Store
 .DS_Store?
 
-# Large data objects
+# Data objects
 data/Norwegian_lakes.rds
-results/trout_model.rds
-results/trout_model.rds
+data/survey_raw/event.txt
+data/survey_raw/occurrence.txt
+data/artsobs_clean.rds
+data/survey_clean.rds
+
+# Latex files
 integrated_lakefish_files/figure-latex/plot observations-1.pdf
 integrated_lakefish_files/figure-latex/make small mesh-1.pdf
