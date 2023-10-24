@@ -411,8 +411,8 @@ knit_time <- round(difftime(end_time, start_time, units = "hours"), 2)
 
 This document took `r knit_time` hours to compile.
 
-```{r}
-sessioninfo::session_info(pkgs = c("INLA", "inlabru")) |> 
+```{r, echo = FALSE}
+sessioninfo::session_info(pkgs = "loaded") |> 
   details::details(
     summary = 'Current session info',
     open    = TRUE
