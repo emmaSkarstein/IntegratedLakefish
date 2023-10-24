@@ -63,7 +63,7 @@ artsobs <- artsobs_matched %>%
 # The survey data is downloaded from here: 
 # https://gbif.vm.ntnu.no/ipt/resource?r=fish_status_survey_of_nordic_lakes. 
 # The downloaded file contains two data sets, one with occurrences and one with events, so we need to merge these. 
-
+# Name the folder that contains the downloaded data "survey_raw".
 
 # Merging occurence and events for the survey data:
 occ <- read.table("data/survey_raw/occurrence.txt", 
