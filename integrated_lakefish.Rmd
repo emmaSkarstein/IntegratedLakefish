@@ -38,7 +38,7 @@ These are the packages we will be using:
 #devtools::install_github("PhilipMostert/PointedSDMs")
 library(PointedSDMs) # model fitting
 library(ggplot2)     # plotting
-library(raster)      # ???? Model fitting fails if I exclude this
+library(raster)      
 library(mapproj)     # map options for plotting
 library(INLA)        # functions for specifying mesh
 library(dplyr)       # data handling
@@ -144,6 +144,7 @@ We can plot the observed data points:
 
 ```{r, plot observations}
 showtext_auto()
+showtext_opts(dpi = 300)
 f1 <- "Open sans"
 font_add_google(f1, f1)
 
@@ -189,6 +190,7 @@ p_survey <- ggplot(survey %>% filter(occurrenceStatus == 1),
 p_artsobs / p_survey
 
 ggsave("figures/presence_points.pdf", height = 5, width = 8)
+ggsave("figures/presence_points.png", height = 5, width = 8)
 ```
 
 # Joint model for four fish species
@@ -372,6 +374,7 @@ for(fish in fishes) {
 
 patchwork::wrap_plots(plot_list, nrow = 1)
 ggsave("figures/fishplot_four_species.pdf", height = 3, width = 8)
+ggsave("figures/fishplot_four_species.png", height = 3, width = 8)
 ```
 
 And finally we predict and plot the bias field, which is shared between all the fish, as it describes the human sampling more than the distribution of the fish.
