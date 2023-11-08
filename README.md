@@ -1,5 +1,8 @@
+[![DOI](https://zenodo.org/badge/606063179.svg)](https://zenodo.org/doi/10.5281/zenodo.10053159)
+
+
 # IntegratedLakefish
-Code and reproducible research files for "The Point Process Framework for Integrated Modelling of Biodiversity Data".
+Code and reproducible research files for "The Point Process Framework for Integrated Modelling of Biodiversity Data", by Kwaku Peprah Adjei, Philip Mostert, Jorge Sicacha Parada, Emma Skarstein and Robert B. O'Hara. Article available as preprint.
 
 ## Getting started
 Follow these steps to reproduce our results! (note: the model takes around 3 hours to run)
