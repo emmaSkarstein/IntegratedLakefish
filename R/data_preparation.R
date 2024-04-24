@@ -40,6 +40,8 @@ artsobs_raw <- rgbif::occ_data(scientificName = myspecies,
                                # Norwegian Species Observation Service: 
                                datasetKey = "b124e1e0-4755-430f-9eab-894f25a9b59c")
 
+rgbif::gbif_citation("b124e1e0-4755-430f-9eab-894f25a9b59c")
+
 artsobs_data_list <- vector("list", length(myspecies))
 names(artsobs_data_list) <- myspecies
 for(s in myspecies){
