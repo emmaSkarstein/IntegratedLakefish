@@ -44,6 +44,7 @@ library(INLA)        # functions for specifying mesh
 library(dplyr)       # data handling
 library(sf)          # spatial stuff
 library(showtext)    # font for plot
+library(giscoR)      # Polygon object
 library(patchwork)   # combining figures
 ```
 
@@ -70,27 +71,49 @@ We begin by making a spatial mesh out of a map of Norway.
 #norway_sf <- st_as_sf(norway, coords = c("long", "lat"), crs = proj)
 ```
 
-```{r, norway map, warning = FALSE, message = FALSE}
+```{r, Norway Map Old, warning = FALSE, message = FALSE, eval = FALSE, echo = FALSE}
 proj <- '+proj=utm +zone=32 +datum=WGS84 +units=km +no_defs'#m
-norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE, 
-                  ylim=c(58,72), xlim=c(4,32))
+norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE,
+                        ylim=c(58,72), xlim=c(4,32))
 IDs <- sapply(strsplit(norwayfill$names, ":"), function(x) x[1])
-norway.poly <- spTransform(maptools::map2SpatialPolygons(norwayfill, IDs = IDs, 
-          proj4string = CRS('+proj=lonlat +zone=32 +datum=WGS84 +units=m +no_defs')), proj)
+norway.poly <- spTransform(maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
+proj4string = CRS('+proj=lonlat +zone=32 +datum=WGS84 +units=m +no_defs')), proj)
+norway.poly <- st_as_sf(norway.poly)
+```
+
+```{r, norway map, warning = FALSE, message = FALSE, eval = FALSE, echo = TRUE}
+#proj <- '+proj=utm +zone=32 +datum=WGS84 +units=km +no_defs'#m
+proj <- '+proj=tmerc +lat_0=58 +lon_0=6.05625 +k=1 +x_0=0 +y_0=0 +a=6377492.018 +units=km +no_defs +type=crs'
+norway.poly <- giscoR::gisco_get_countries(year = 2020, country = 'Norway', resolution = 60)
+norway.poly <- st_transform(norway.poly, proj)
+norway.poly <- st_cast(st_as_sf(norway.poly), 'POLYGON')
+norway.poly <- norway.poly[which.max(st_area(norway.poly)),]
+
+norway.poly.simp <- rmapshaper::ms_simplify(norway.poly, keep = 0.8)
+```
+
+```{r, norwayGet, warning = FALSE, message = FALSE, echo = FALSE, eval = TRUE}
+#proj <- '+proj=utm +zone=32 +datum=WGS84 +units=km +no_defs'#m
+proj <- '+proj=tmerc +lat_0=58 +lon_0=6.05625 +k=1 +x_0=0 +y_0=0 +a=6377492.018 +units=km +no_defs +type=crs'
+norway.poly <- giscoR::gisco_get_countries(year = 2020, country = 'Norway', resolution = 60)
+norway.poly <- st_transform(norway.poly, proj)
+norway.poly <- st_cast(st_as_sf(norway.poly), 'POLYGON')
+norway.poly <- norway.poly[which.max(st_area(norway.poly)),]
+norway.poly.simp <- readRDS('Norway.rds')
+norway.poly <- st_transform(norway.poly, proj)
+norway.poly.simp <- st_transform(norway.poly.simp, proj)
 ```
 
 Adjusting the mesh to be coarser is the easiest way to decrease the run-time for the model. With the following mesh, the model estimation takes a long time to complete, but feel free to change the `max.edge` or `cutoff` to get a coarser mesh.
 
 ```{r, make small mesh, eval = TRUE, fig.width=8, fig.height=5}
-mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly), 
-                     cutoff = 0.3 * 30, # smallest allowed distance between points
-                     max.edge = c(6, 3) * 30, # decrease this for more int. points
-                     #max.edge = c(3, 1),
-                     offset = c(1, 1) * 30,
+mesh <- inla.mesh.2d(boundary = inla.sp2segment(norway.poly.simp), 
+                     cutoff = 0.3 * 30, # 30smallest allowed distance between points
+                     max.edge = c(6, 3) * 7.5, # 10decrease this for more int. points
+                     offset = c(1, 1) * 50, #50
                      crs = st_crs(proj))
 
-ipoints = st_as_sf(fm_int(mesh, norway.poly,  
-                 int.args = list(method = 'direct')))
+ipoints = fm_int(mesh, norway.poly.simp)
 
 plot(mesh)
 ```
@@ -121,10 +144,10 @@ cov_pixel <- SpatialPixelsDataFrame(
   points = covariates[,c("decimalLongitude","decimalLatitude")],
   data = data.frame(covariates[,Use]), 
   proj4string = CRS('+proj=lonlat +zone=32 +datum=WGS84 +units=m +no_defs'), 
-  tol = 0.340571)
+  tol = 0.99)
 if (length(Use) == 1) names(cov_pixel@data) <- Use 
 # Scale covariates and convert to terra::rast
-cov_raster <- terra::project(scale(terra::rast(cov_pixel)), proj)
+cov_raster <- scale(terra::project(terra::rast(cov_pixel), proj))
 ```
 
 # Observation data
@@ -139,13 +162,15 @@ survey <- readRDS("data/survey_clean.rds") %>%
   st_as_sf(coords =c("decimalLongitude", "decimalLatitude"), 
            crs = '+proj=lonlat +zone=32 +datum=WGS84 +units=m +no_defs') %>%
   mutate(decimalLongitude = st_coordinates(.)[,1], decimalLatitude = st_coordinates(.)[,2]) %>%
-  st_transform(proj)
+  st_transform(proj) %>%
+st_intersects(., norway.poly.simp, sparse = FALSE)[,1]
 artsobs <- readRDS("data/artsobs_clean.rds") %>% 
   filter(species %in% fishes) %>%
   st_as_sf(coords =c("decimalLongitude", "decimalLatitude"), 
            crs = '+proj=lonlat +zone=32 +datum=WGS84 +units=m +no_defs') %>%
   mutate(decimalLongitude = st_coordinates(.)[,1], decimalLatitude = st_coordinates(.)[,2]) %>%
-  st_transform(proj)
+  st_transform(proj) %>%
+  st_intersects(., norway.poly.simp, sparse = FALSE)[,1]
 ```
 
 We can plot the observed data points:
@@ -212,22 +237,23 @@ $$
 \end{aligned}
 $$
 
-We first prepare the model using the `intModel` function.
+We first prepare the model using the `startSpecies` function.
 
 ```{r set up survey model}
-surveyModel <- intModel(
+surveyModel <- startSpecies(
   survey,                              # Survey data
-  Boundary = st_as_sf(norway.poly),    # Boundary
+  Boundary = norway.poly,              # Boundary
   IPS = ipoints,                       # integration points
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  Coordinates = c("decimalLongitude", "decimalLatitude"), # Name of coords
+  speciesSpatial = 'copy',             # Copies across the species
+  speciesIntercept = FALSE,            # Turn random intercept off for species
+  pointsIntercept = FALSE,             # Turn dataset intercept off
   responsePA = "occurrenceStatus",     # Name of response column
   pointsSpatial = NULL,                # NULL since we use speciesSpatial
   Mesh = mesh,                         # inla mesh object
   Projection = proj                    # CRS for points and covariates
   )                                     
-
 ```
 
 We then specify priors for the spatial effects using `.$specifySpatial` and for the intercepts using `.$priorsFixed`.
@@ -237,30 +263,34 @@ for (fish in fishes) {
   
   surveyModel$specifySpatial(Species = fish, 
                              prior.range = c(50, 0.01),
-                             prior.sigma = c(0.5, 0.01))
+                             prior.sigma = c(0.5, 0.01),
+                             constr = FALSE)
   
   surveyModel$priorsFixed(Effect = 'intercept', 
                         Species = fish, 
                         mean.linear = 0, 
-                        prec.linear = 1)
+                        prec.linear = 10)
 }
 
-
-
+surveyModel$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
+surveyModel$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
 ```
 
 And fit the model using `fitISDM`.
 
 ```{r fitISDM survey, warning = FALSE}
 surveyFit <- fitISDM(surveyModel, 
-                      options = list(num.threads = 2, 
-                        control.inla = list(int.strategy = 'eb', 
-                                            cmin = 0, 
+                      options = list(num.threads = 4, 
+                        control.inla = list(int.strategy = 'ccd', 
+                                            cmin = 0,
+                                            control.vb=list(enable=FALSE),
+                                            diagonal = 1e-3,
                                             strategy = 'adaptive'),
                         safe = TRUE,
                         inla.mode = 'experimental'))
 
 summary(surveyFit)
+saveRDS(surveyFit, "results/surveyModel.rds")
 ```
 
 The presence-only data is fitted with a Poisson point process model, where the intensity depends on the same covariates $x(s)$ and the same spatial field $\xi_{j}(s)$. In the ISDM, we will add an additional spatial field $\xi_{\text{bias}}(s)$ that is unique to the citizen science data, but shared across all fish species:
@@ -273,14 +303,15 @@ $$
 $$
 
 ```{r setup arts model}
-artsobsModel <- intModel(
+artsobsModel <- startSpecies(
   artsobs,                             # Citizen science data
-  Boundary = st_as_sf(norway.poly),    # Boundary
+  Boundary = norway.poly,              # Boundary
   IPS = ipoints,                       # integration points
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  Coordinates = c("decimalLongitude", "decimalLatitude"), # Name of coords
-  responsePA = "occurrenceStatus",     # Name of response column
+  speciesSpatial = 'copy',             # Copies across the species
+  speciesIntercept = FALSE,            # Turn random intercept off for species
+  pointsIntercept = FALSE,             # Turn dataset intercept off
   pointsSpatial = NULL,                # NULL since we use speciesSpatial
   Mesh = mesh,                         # inla mesh object
   Projection = proj                    # CRS for points and covariates
@@ -292,26 +323,32 @@ for (fish in fishes) {
   
   artsobsModel$specifySpatial(Species = fish,
                              prior.range = c(50, 0.01),
-                             prior.sigma = c(0.5, 0.01))
+                             prior.sigma = c(0.5, 0.01), 
+                             constr = FALSE)
   
   artsobsModel$priorsFixed(Effect = 'intercept', 
                         Species = fish, 
                         mean.linear = 0, 
-                        prec.linear = 1)
+                        prec.linear = 10)
 }
 
+artsobsModel$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
+artsobsModel$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
 ```
 
 ```{r fitISDM artsobs, warning = FALSE}
 artsobsFit <- fitISDM(artsobsModel, 
-                      options = list(num.threads = 2, 
-                        control.inla = list(int.strategy = 'eb', 
-                                            cmin = 0, 
+                      options = list(num.threads = 4, 
+                        control.inla = list(int.strategy = 'ccd', 
+                                            cmin = 0,
+                                            control.vb=list(enable=FALSE),
+                                            diagonal = 1e-3,
                                             strategy = 'gaussian'),
                         safe = TRUE,
                         inla.mode = 'experimental'))
 
 summary(artsobsFit)
+saveRDS(artsobsFit, "results/artsObsModel.rds")
 ```
 
 # Joint model for four fish species
@@ -319,15 +356,16 @@ summary(artsobsFit)
 Now we will fit two IDMS, one with the two datasets combined, and another with an additional spatial field for the citizen science data. Both these models will have four shared fields, shared across the data sets (survey/citizen science), but separate for each fish species. Since we have two data sets and four species, that means that we in total have eight sub-models.
 
 ```{r, setting up fish model, warning=FALSE}
-ISDMsetup <- intModel(
+ISDMsetup <- startSpecies(
   survey,                              # Survey data
   artsobs,                             # Citizen science data
-  Boundary = st_as_sf(norway.poly),    # Boundary
+  Boundary = norway.poly,              # Boundary
   IPS = ipoints,                       # integration points
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  speciesSpatial = "copy",             # Copy species fields across data
-  Coordinates = c("decimalLongitude", "decimalLatitude"), # Name of coords
+  speciesSpatial = 'copy',             # Copies across the species
+  speciesIntercept = FALSE,            # Turn random intercept off for species
+  pointsIntercept = FALSE,             # Turn dataset intercept off
   responsePA = "occurrenceStatus",     # Name of response column
   pointsSpatial = NULL,                # NULL since we use speciesSpatial
   Mesh = mesh,                         # inla mesh object
@@ -340,45 +378,25 @@ for (fish in fishes) {
   
   ISDMsetup$specifySpatial(Species = fish,
                            prior.range = c(50, 0.01),
-                           prior.sigma = c(0.5, 0.01))
+                           prior.sigma = c(0.5, 0.01), 
+                           constr = FALSE)
   
   ISDMsetup$priorsFixed(Effect = 'intercept', 
                         Species = fish, 
                         mean.linear = 0, 
-                        prec.linear = 1)
+                        prec.linear = 10)
+  
 }
 
+ISDMsetup$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
+ISDMsetup$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
 ```
 
-For the species specific fields, the default in PointedSDMs is that these are allowed to be different up to a scaling factor (named beta in INLA) across the data sets. That means that for instance the trout-specific spatial field for the citizen science data set is equal to beta times the trout-specific spatial field for the survey data. In practice, this has to do with the copy-option in INLA. But in our model we want them to be the same, not to vary by a factor. So we manually change this using the `$changeComponents` function, by setting `hyper = list(beta = list(fixed = TRUE))` for each of the four citizen science fields.
+For the species specific fields, the default in PointedSDMs is that these are allowed to be different up to a scaling factor (named beta in INLA) across the data sets. That means that for instance the trout-specific spatial field for the citizen science data set is equal to beta times the trout-specific spatial field for the survey data. In practice, this has to do with the copy-option in INLA. But in our model we want them to be the same, not to vary by a factor. So we manually change this using the `$specifyRandom` function, by setting `hyper = list(beta = list(fixed = TRUE))` for each of the four citizen science fields.
 
 ```{r, customizing fish model, warning=FALSE, include = TRUE, eval = TRUE}
-ISDMsetup$changeComponents(
-  'Perca_fluviatilis_artsobs_spatial(
-      main = geometry, 
-      copy = "Perca_fluviatilis_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE)))',
-  print = FALSE)
-
-ISDMsetup$changeComponents(
-  'Salmo_trutta_artsobs_spatial(
-      main = geometry, 
-      copy = "Salmo_trutta_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE)))',
-  print = FALSE)
-
-ISDMsetup$changeComponents(
-  'Salvelinus_alpinus_artsobs_spatial(
-      main = geometry, 
-      copy = "Salvelinus_alpinus_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE)))',
-  print = FALSE)
-
-ISDMsetup$changeComponents(
-  'Esox_lucius_artsobs_spatial(
-      main = geometry, 
-      copy = "Esox_lucius_survey_spatial", 
-      hyper = list(beta = list(fixed = TRUE)))')
+ISDMsetup$specifyRandom(copyModel = list(beta = list(fixed = TRUE)))
+ISDMsetup$changeComponents()
 ```
 
 We may look at which terms are included in each of the eight sub-models by calling `$updateFormula` with the data sets as the arguments.
@@ -390,9 +408,11 @@ ISDMsetup$updateFormula(datasetName = "artsobs")
 
 ```{r, fitting fish model, warning=FALSE, eval = run_model}
 ISDM <- fitISDM(ISDMsetup, 
-                      options = list(num.threads = 2, 
-                        control.inla = list(int.strategy = 'eb', 
-                                            cmin = 0, 
+                      options = list(num.threads = 4, 
+                        control.inla = list(int.strategy = 'ccd', 
+                                            cmin = 0,
+                                            control.vb=list(enable=FALSE),
+                                            diagonal = 1e-3,
                                             strategy = 'gaussian'),
                         safe = TRUE,
                         inla.mode = 'experimental'))
@@ -403,13 +423,13 @@ We may then examine the model summary and save the model for future use.
 ```{r, view and save model, warning=FALSE, eval = run_model}
 summary(ISDM)
 
-#saveRDS(ISDM, "results/ISDM.rds")
+saveRDS(ISDM, "results/ISDMModel.rds")
 ```
 
 This model has the species specific spatial fields, but we also want a bias field that is shared across the species. We add this using `$addBias`.
 
 ```{r, add bias field, warning=FALSE}
-ISDMsetup$addBias("artsobs")
+ISDMsetup$addBias("artsobs", copyModel = FALSE)
 ISDMsetup$specifySpatial(Bias = 'artsobs',
                          prior.range = c(50, 0.01),
                          prior.sigma = c(0.5, 0.01))
@@ -417,15 +437,17 @@ ISDMsetup$specifySpatial(Bias = 'artsobs',
 
 ```{r, fitting fish model2, warning=FALSE, eval = run_model}
 ISDMbias <- fitISDM(ISDMsetup, 
-                      options = list(num.threads = 2, 
-                        control.inla = list(int.strategy = 'eb', 
-                                            cmin = 0, 
+                      options = list(num.threads = 4, 
+                        control.inla = list(int.strategy = 'ccd', 
+                                            cmin = 0,
+                                            control.vb=list(enable=FALSE),
+                                            diagonal = 1e-3,
                                             strategy = 'gaussian'),
                         safe = TRUE,
                         inla.mode = 'experimental'))
 
 summary(ISDMbias)
-#saveRDS(ISDMbias, "results/ISDMbias.rds")
+saveRDS(ISDMbias, "results/ISDMBiasModel.rds")
 ```
 
 ```{r, load model, warning=FALSE, echo = FALSE}
@@ -465,7 +487,8 @@ ggplot(plotData, aes(x = mean, y = variable, col = model)) +
         strip.text = element_text(family = f1, size = 12, face = "italic"),
         plot.tag = element_text(angle = 90, hjust = 0.5),
         plot.tag.position = c(-0.03, 0.45))
-
+ggsave("figures/CIplots.png")
+ggsave("figures/CIplots.pdf")
 ```
 
 We define a function that will do species-specific predictions for the ISDM with a bias field, and save the species predictions, since these take a little time to compute.
@@ -474,10 +497,9 @@ We define a function that will do species-specific predictions for the ISDM with
 predict_species <- function(model, species, predict_data){
   sharedfield <- predict(model, 
                          data = predict_data,
-                         spatial = TRUE, 
-                         fun = 'linear',
+                         spatial = TRUE,
                          species = species,
-                         n.samples = 100)
+                         n.samples = 1000)
   file_name <- paste0("results/sharedfield_", species, ".rds")
   saveRDS(sharedfield, file_name)
   return(sharedfield)
@@ -494,6 +516,9 @@ for(fish in fishes) {
     species = fish
   )
 }
+
+saveRDS(prediction_list, "results/Predictionlist.rds")
+
 ```
 
 Once we have the predictions, we can make some plots. We similarly define a function that makes a plot for one species, and then run this for all four species.
@@ -508,7 +533,10 @@ plot_preferences <- list(scale_color_distiller(palette = "BrBG", direction = 1),
                          scale_y_continuous(breaks = c(60, 68)),
                          theme_minimal(),
                          theme(text = element_text(family = f1),
-                               title = element_text(family = f1, size = 10, face = "italic"),
+                               #legend.title = element_text(size = 6),
+                               axis.text=element_text(size=12),
+                               legend.text = element_text(size = 12),
+                               title = element_text(family = f1, size = 15, face = "italic"),
                                legend.key.height = unit(0.3, "cm"), 
                                legend.title = element_blank(),
                                legend.position = "bottom")
@@ -545,9 +573,8 @@ And finally we predict and plot the bias field, which is shared between all the 
 ```{r, plotting bias field from the four fish model, eval = TRUE,fig.width=8, fig.height=5}
 fish_biasfield <- predict(ISDMbias, 
                           data = predData,
-                          biasfield = TRUE,
-                          fun = 'linear', 
-                          n.samples = 100) 
+                          bias = TRUE,
+                          n.samples = 1000) 
 
 saveRDS(fish_biasfield, "results/ISDMbiasfield.rds")
 fish_biasfield <- readRDS("results/ISDMbiasfield.rds")
