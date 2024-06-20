@@ -65,23 +65,7 @@ Before you run this file, make sure you have the following files in the given lo
 
 We begin by making a spatial mesh out of a map of Norway.
 
-```{r, norway map stuff, warning = FALSE, message = FALSE, eval = FALSE, echo = FALSE}
-#norway <- ggplot2::map_data("world", region = "Norway(?!:Svalbard)")
-#norway <- setdiff(norway, dplyr::filter(norway, subregion == "Jan Mayen"))
-#norway_sf <- st_as_sf(norway, coords = c("long", "lat"), crs = proj)
-```
-
-```{r, Norway Map Old, warning = FALSE, message = FALSE, eval = FALSE, echo = FALSE}
-proj <- '+proj=utm +zone=32 +datum=WGS84 +units=km +no_defs'#m
-norwayfill <- maps::map("world", "norway", fill=TRUE, plot=FALSE,
-                        ylim=c(58,72), xlim=c(4,32))
-IDs <- sapply(strsplit(norwayfill$names, ":"), function(x) x[1])
-norway.poly <- spTransform(maptools::map2SpatialPolygons(norwayfill, IDs = IDs,
-proj4string = CRS('+proj=lonlat +zone=32 +datum=WGS84 +units=m +no_defs')), proj)
-norway.poly <- st_as_sf(norway.poly)
-```
-
-```{r, norway map, warning = FALSE, message = FALSE, eval = FALSE, echo = TRUE}
+```{r, norway map, warning = FALSE, message = FALSE, eval = TRUE, echo = TRUE}
 #proj <- '+proj=utm +zone=32 +datum=WGS84 +units=km +no_defs'#m
 proj <- '+proj=tmerc +lat_0=58 +lon_0=6.05625 +k=1 +x_0=0 +y_0=0 +a=6377492.018 +units=km +no_defs +type=crs'
 norway.poly <- giscoR::gisco_get_countries(year = 2020, country = 'Norway', resolution = 60)
@@ -90,18 +74,6 @@ norway.poly <- st_cast(st_as_sf(norway.poly), 'POLYGON')
 norway.poly <- norway.poly[which.max(st_area(norway.poly)),]
 
 norway.poly.simp <- rmapshaper::ms_simplify(norway.poly, keep = 0.8)
-```
-
-```{r, norwayGet, warning = FALSE, message = FALSE, echo = FALSE, eval = TRUE}
-#proj <- '+proj=utm +zone=32 +datum=WGS84 +units=km +no_defs'#m
-proj <- '+proj=tmerc +lat_0=58 +lon_0=6.05625 +k=1 +x_0=0 +y_0=0 +a=6377492.018 +units=km +no_defs +type=crs'
-norway.poly <- giscoR::gisco_get_countries(year = 2020, country = 'Norway', resolution = 60)
-norway.poly <- st_transform(norway.poly, proj)
-norway.poly <- st_cast(st_as_sf(norway.poly), 'POLYGON')
-norway.poly <- norway.poly[which.max(st_area(norway.poly)),]
-norway.poly.simp <- readRDS('Norway.rds')
-norway.poly <- st_transform(norway.poly, proj)
-norway.poly.simp <- st_transform(norway.poly.simp, proj)
 ```
 
 Adjusting the mesh to be coarser is the easiest way to decrease the run-time for the model. With the following mesh, the model estimation takes a long time to complete, but feel free to change the `max.edge` or `cutoff` to get a coarser mesh.
