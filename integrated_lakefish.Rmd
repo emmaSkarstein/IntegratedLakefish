@@ -65,7 +65,7 @@ Before you run this file, make sure you have the following files in the given lo
 
 We begin by making a spatial mesh out of a map of Norway.
 
-```{r, norway map, warning = FALSE, message = FALSE, eval = TRUE, echo = TRUE}
+```{r, norway map, warning = FALSE, message = FALSE}
 #proj <- '+proj=utm +zone=32 +datum=WGS84 +units=km +no_defs'#m
 proj <- '+proj=tmerc +lat_0=58 +lon_0=6.05625 +k=1 +x_0=0 +y_0=0 +a=6377492.018 +units=km +no_defs +type=crs'
 norway.poly <- giscoR::gisco_get_countries(year = 2020, country = 'Norway', resolution = 60)
@@ -218,7 +218,7 @@ surveyModel <- startSpecies(
   IPS = ipoints,                       # integration points
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  speciesSpatial = 'copy',             # Copies across the species
+  speciesSpatial = 'replicate',        # Creates field per species
   speciesIntercept = FALSE,            # Turn random intercept off for species
   pointsIntercept = FALSE,             # Turn dataset intercept off
   responsePA = "occurrenceStatus",     # Name of response column
@@ -248,18 +248,21 @@ surveyModel$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
 surveyModel$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
 ```
 
-And fit the model using `fitISDM`.
+We first define some model options, and then fit the model using `fitISDM`.
 
 ```{r fitISDM survey, warning = FALSE}
-surveyFit <- fitISDM(surveyModel, 
-                      options = list(num.threads = 4, 
+
+modelOptions <- list(num.threads = 4, 
                         control.inla = list(int.strategy = 'ccd', 
                                             cmin = 0,
                                             control.vb=list(enable=FALSE),
                                             diagonal = 1e-3,
                                             strategy = 'adaptive'),
                         safe = TRUE,
-                        inla.mode = 'experimental'))
+                        inla.mode = 'experimental')
+
+surveyFit <- fitISDM(surveyModel, 
+                      options = modelOptions)
 
 summary(surveyFit)
 saveRDS(surveyFit, "results/surveyModel.rds")
@@ -281,7 +284,7 @@ artsobsModel <- startSpecies(
   IPS = ipoints,                       # integration points
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  speciesSpatial = 'copy',             # Copies across the species
+  speciesSpatial = 'replicate',        # Creates field per species
   speciesIntercept = FALSE,            # Turn random intercept off for species
   pointsIntercept = FALSE,             # Turn dataset intercept off
   pointsSpatial = NULL,                # NULL since we use speciesSpatial
@@ -310,14 +313,7 @@ artsobsModel$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
 
 ```{r fitISDM artsobs, warning = FALSE}
 artsobsFit <- fitISDM(artsobsModel, 
-                      options = list(num.threads = 4, 
-                        control.inla = list(int.strategy = 'ccd', 
-                                            cmin = 0,
-                                            control.vb=list(enable=FALSE),
-                                            diagonal = 1e-3,
-                                            strategy = 'gaussian'),
-                        safe = TRUE,
-                        inla.mode = 'experimental'))
+                      options = modelOptions)
 
 summary(artsobsFit)
 saveRDS(artsobsFit, "results/artsObsModel.rds")
@@ -335,7 +331,7 @@ ISDMsetup <- startSpecies(
   IPS = ipoints,                       # integration points
   spatialCovariates = cov_raster,      # Covariates
   speciesName = "species",             # The column containing species name
-  speciesSpatial = 'copy',             # Copies across the species
+  speciesSpatial = 'replicate',        # Creates field per species
   speciesIntercept = FALSE,            # Turn random intercept off for species
   pointsIntercept = FALSE,             # Turn dataset intercept off
   responsePA = "occurrenceStatus",     # Name of response column
@@ -364,13 +360,6 @@ ISDMsetup$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
 ISDMsetup$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
 ```
 
-For the species specific fields, the default in PointedSDMs is that these are allowed to be different up to a scaling factor (named beta in INLA) across the data sets. That means that for instance the trout-specific spatial field for the citizen science data set is equal to beta times the trout-specific spatial field for the survey data. In practice, this has to do with the copy-option in INLA. But in our model we want them to be the same, not to vary by a factor. So we manually change this using the `$specifyRandom` function, by setting `hyper = list(beta = list(fixed = TRUE))` for each of the four citizen science fields.
-
-```{r, customizing fish model, warning=FALSE, include = TRUE, eval = TRUE}
-ISDMsetup$specifyRandom(copyModel = list(beta = list(fixed = TRUE)))
-ISDMsetup$changeComponents()
-```
-
 We may look at which terms are included in each of the eight sub-models by calling `$updateFormula` with the data sets as the arguments.
 
 ```{r, view formulas, warning=FALSE}
@@ -380,14 +369,7 @@ ISDMsetup$updateFormula(datasetName = "artsobs")
 
 ```{r, fitting fish model, warning=FALSE, eval = run_model}
 ISDM <- fitISDM(ISDMsetup, 
-                      options = list(num.threads = 4, 
-                        control.inla = list(int.strategy = 'ccd', 
-                                            cmin = 0,
-                                            control.vb=list(enable=FALSE),
-                                            diagonal = 1e-3,
-                                            strategy = 'gaussian'),
-                        safe = TRUE,
-                        inla.mode = 'experimental'))
+                      options = modelOptions)
 ```
 
 We may then examine the model summary and save the model for future use.
@@ -401,29 +383,55 @@ saveRDS(ISDM, "results/ISDMModel.rds")
 This model has the species specific spatial fields, but we also want a bias field that is shared across the species. We add this using `$addBias`.
 
 ```{r, add bias field, warning=FALSE}
-ISDMsetup$addBias("artsobs", copyModel = FALSE)
-ISDMsetup$specifySpatial(Bias = 'artsobs',
+ISDMsetupBias <- startSpecies(
+  survey,                              # Survey data
+  artsobs,                             # Citizen science data
+  Boundary = norway.poly,              # Boundary
+  IPS = ipoints,                       # integration points
+  spatialCovariates = cov_raster,      # Covariates
+  speciesName = "species",             # The column containing species name
+  speciesSpatial = 'replicate',        # Creates field per species
+  speciesIntercept = FALSE,            # Turn random intercept off for species
+  pointsIntercept = FALSE,             # Turn dataset intercept off
+  responsePA = "occurrenceStatus",     # Name of response column
+  pointsSpatial = NULL,                # NULL since we use speciesSpatial
+  Mesh = mesh,                         # inla mesh object
+  Projection = proj                    # CRS for points and covariates
+  ) 
+
+for (fish in fishes) {
+  
+  ISDMsetupBias$specifySpatial(Species = fish,
+                           prior.range = c(50, 0.01),
+                           prior.sigma = c(0.5, 0.01), 
+                           constr = FALSE)
+  
+  ISDMsetupBias$priorsFixed(Effect = 'intercept', 
+                        Species = fish, 
+                        mean.linear = 0, 
+                        prec.linear = 10)
+  
+}
+
+ISDMsetupBias$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
+ISDMsetupBias$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
+
+ISDMsetupBias$addBias("artsobs", copyModel = FALSE)
+ISDMsetupBias$specifySpatial(Bias = 'artsobs',
                          prior.range = c(50, 0.01),
                          prior.sigma = c(0.5, 0.01))
 ```
 
 ```{r, fitting fish model2, warning=FALSE, eval = run_model}
-ISDMbias <- fitISDM(ISDMsetup, 
-                      options = list(num.threads = 4, 
-                        control.inla = list(int.strategy = 'ccd', 
-                                            cmin = 0,
-                                            control.vb=list(enable=FALSE),
-                                            diagonal = 1e-3,
-                                            strategy = 'gaussian'),
-                        safe = TRUE,
-                        inla.mode = 'experimental'))
+ISDMbias <- fitISDM(ISDMsetupBias, 
+                      options = modelOptions)
 
 summary(ISDMbias)
 saveRDS(ISDMbias, "results/ISDMBiasModel.rds")
 ```
 
-```{r, load model, warning=FALSE, echo = FALSE}
-#ISDM <- readRDS("results/ISDMbias.rds")
+```{r, load model, warning=FALSE, echo = FALSE, eval = FALSE}
+ISDMBias <- readRDS("results/ISDMbias.rds")
 ```
 
 # Predictions and plots
@@ -466,13 +474,12 @@ ggsave("figures/CIplots.pdf")
 We define a function that will do species-specific predictions for the ISDM with a bias field, and save the species predictions, since these take a little time to compute.
 
 ```{r, prediction function}
-predict_species <- function(model, species, predict_data){
+predict_species <- function(model, predict_data){
   sharedfield <- predict(model, 
                          data = predict_data,
                          spatial = TRUE,
-                         species = species,
                          n.samples = 1000)
-  file_name <- paste0("results/sharedfield_", species, ".rds")
+  file_name <- paste0("results/sharedfield", ".rds")
   saveRDS(sharedfield, file_name)
   return(sharedfield)
 }
@@ -480,16 +487,14 @@ predict_species <- function(model, species, predict_data){
 
 ```{r, predict spatial fields for all four fish species, eval = run_prediction}
 predData <- fm_pixels(mesh = mesh, mask = norway.poly, dims = c(450, 450))
-prediction_list <- list()
-for(fish in fishes) {
-  prediction_list[[fish]] <- predict_species(
+  
+predictionFish <- predict_species(
     model = ISDMbias,
-    predict_data = predData,
-    species = fish
+    predict_data = predData
   )
-}
 
-saveRDS(prediction_list, "results/Predictionlist.rds")
+
+saveRDS(predictionFish, "results/Predictionlist.rds")
 
 ```
 
@@ -505,7 +510,6 @@ plot_preferences <- list(scale_color_distiller(palette = "BrBG", direction = 1),
                          scale_y_continuous(breaks = c(60, 68)),
                          theme_minimal(),
                          theme(text = element_text(family = f1),
-                               #legend.title = element_text(size = 6),
                                axis.text=element_text(size=12),
                                legend.text = element_text(size = 12),
                                title = element_text(family = f1, size = 15, face = "italic"),
@@ -517,7 +521,7 @@ plot_preferences <- list(scale_color_distiller(palette = "BrBG", direction = 1),
 plot_species <- function(predictions, species_to_plot, plot_preferences){
   
   p <- ggplot() +
-    gg(predictions$speciesPredictions[[species_to_plot]],
+    gg(predictions,
        aes(col = mean)) +
     gg(NO, lwd = 0.8) +
     labs(title = sub("_", " ", species_to_plot)) +
@@ -530,7 +534,7 @@ plot_species <- function(predictions, species_to_plot, plot_preferences){
 plot_list <- list()
 for(fish in fishes) {
   plot_list[[fish]] <- plot_species(
-    predictions = readRDS(paste0("results/sharedfield_", fish, ".rds")),
+    predictions = predictionFish$speciesPredictions[[fish]],
     species = fish,
     plot_preferences = plot_preferences)
 }
@@ -559,6 +563,44 @@ ggplot() +
   plot_preferences
 
 ggsave("figures/ISDMbiasfield.pdf", width = 3*2, height = 3*2)
+```
+
+# Cross-validation
+
+We will use a spatial block cross-validation technique to show that the ISDM with a second spatial effect performs better than the model with only one. Here, we grid our map into 4 separate spatial blocks, which is illustrated below. We then fit a model with all blocks except one, and calculate the DIC score. The model with the lowest DIC is deemed best. To do this, we first set up the spatial block using `.$spatialBlock`.
+
+```{r spatialBlock, fig.width=8, fig.height=5}
+
+ISDMsetup$spatialBlock(k = 4, rows_cols = c(2,2), 
+                       plot = TRUE, flat_top = TRUE)
+
+ISDMsetupBias$spatialBlock(k = 4, rows_cols = c(2,2), 
+                       plot = FALSE, flat_top = TRUE)
+
+```
+
+And then fit the models using `blockCV`:
+
+```{r blockCV}
+
+ISDMBlock <- blockedCV(ISDMsetup,
+                       options = modelOptions)
+
+ISDMBiasBlock <- blockedCV(ISDMsetupBias,
+                           options = modelOptions)
+
+```
+
+The results are given as follows:
+
+```{r blockResults}
+
+print('ISDM results:')
+ISDMBlock
+
+print('ISDM bias results:')
+ISDMBiasBlock
+
 ```
 
 # Session info and runtime
