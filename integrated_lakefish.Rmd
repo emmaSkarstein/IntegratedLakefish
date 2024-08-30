@@ -228,7 +228,7 @@ surveyModel <- startSpecies(
   )                                     
 ```
 
-We then specify priors for the spatial effects using `.$specifySpatial` and for the intercepts using `.$priorsFixed`.
+We then specify priors for the spatial effects using `.$specifySpatial` and for the intercepts using `.$priorsFixed`. We also set the precision of the group model for the spatial effect to fixed to stabilize the model using `.$specifyRandom`.
 
 ```{r spatialfields survey}
 for (fish in fishes) {
@@ -243,6 +243,9 @@ for (fish in fishes) {
                         mean.linear = 0, 
                         prec.linear = 10)
 }
+
+surveyModel$specifyRandom(speciesGroup = list(model = "iid", 
+        hyper = list(prec = list(initial = 7.5, fixed = TRUE))))
 
 surveyModel$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
 surveyModel$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
@@ -307,6 +310,9 @@ for (fish in fishes) {
                         prec.linear = 10)
 }
 
+artsobsModel$specifyRandom(speciesGroup = list(model = "iid", 
+        hyper = list(prec = list(initial = 7.5, fixed = TRUE))))
+
 artsobsModel$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
 artsobsModel$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
 ```
@@ -355,6 +361,9 @@ for (fish in fishes) {
                         prec.linear = 10)
   
 }
+
+ISDMsetup$specifyRandom(speciesGroup = list(model = "iid", 
+        hyper = list(prec = list(initial = 7.5, fixed = TRUE))))
 
 ISDMsetup$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
 ISDMsetup$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
@@ -412,6 +421,9 @@ for (fish in fishes) {
                         prec.linear = 10)
   
 }
+
+ISDMsetupBias$specifyRandom(speciesGroup = list(model = "iid", 
+        hyper = list(prec = list(initial = 7.5, fixed = TRUE))))
 
 ISDMsetupBias$priorsFixed(Effect = 'HFP', mean.linear = 0, prec.linear = 0.1)
 ISDMsetupBias$priorsFixed(Effect = 'SCI', mean.linear = 0, prec.linear = 0.1)
@@ -567,40 +579,60 @@ ggsave("figures/ISDMbiasfield.pdf", width = 3*2, height = 3*2)
 
 # Cross-validation
 
-We will use a spatial block cross-validation technique to show that the ISDM with a second spatial effect performs better than the model with only one. Here, we grid our map into 4 separate spatial blocks, which is illustrated below. We then fit a model with all blocks except one, and calculate the DIC score. The model with the lowest DIC is deemed best. To do this, we first set up the spatial block using `.$spatialBlock`.
+We will use a spatial-block cross-validation technique to show that the ISDM with a second spatial effect performs better than the model with only one. Here, we grid our map into 4 separate spatial blocks, which is illustrated below. We then fit a model with all blocks except one, and calculate the DIC score. The model with the lowest DIC is deemed best. To do this, we first set up the spatial block using `.$spatialBlock`.
 
 ```{r spatialBlock, fig.width=8, fig.height=5}
+ISDMsetup$spatialBlock(k = 4, rows_cols = c(15,15), 
+                       flat_top = TRUE, plot = TRUE)
 
-ISDMsetup$spatialBlock(k = 4, rows_cols = c(2,2), 
-                       plot = TRUE, flat_top = TRUE)
-
-ISDMsetupBias$spatialBlock(k = 4, rows_cols = c(2,2), 
-                       plot = FALSE, flat_top = TRUE)
-
+ISDMsetupBias$spatialBlock(k = 4, rows_cols = c(15,15), 
+                           flat_top = TRUE, plot = FALSE)
 ```
 
-And then fit the models using `blockCV`:
+And then fit the models using `blockedCV`:
 
 ```{r blockCV}
-
 ISDMBlock <- blockedCV(ISDMsetup,
                        options = modelOptions)
 
 ISDMBiasBlock <- blockedCV(ISDMsetupBias,
                            options = modelOptions)
-
 ```
 
-The results are given as follows:
+The results are then given as:
 
 ```{r blockResults}
-
 print('ISDM results:')
 ISDMBlock
 
 print('ISDM bias results:')
 ISDMBiasBlock
+```
 
+We next preform a spatial-block cross-validation to assess whether the ISDM models fit the data better than the single dataset models. To do this, we block our study area (as before), and fit a model (training model) using every combination of datasets we have in all block combinations, with one block left out. We then use the training model to predict onto the survey data in the block that was left out, and use these predictions as an offset in a new model (testing model) with the left out data. After fitting the testing data, we obtain the marginal likelihood as the measure of fit. The model with the highest marginal likelihood values provides the best fit.
+
+To do this, we use the `blockedCV` function again, but specify *method = 'Predict'*. We then specify the name of the prediction dataset using *predictName*. To include the model with the bias field, we have to set up a second call of `blockedCV`, but this time specifying *datasetCombs =  list(c('survey', 'artsobs'))*, meaning that we are only fitting a model using that combination of datasets (in this case, the ISDM with a bias field).
+
+```{r test}
+
+ISDMPredBlock <- blockedCV(data = ISDMsetup, 
+                           options = modelOptions, 
+                           method = 'Predict',
+                           predictName = 'survey')
+
+ISDMPredBiasBlock <- blockedCV(data = ISDMsetupBias, 
+                               options = modelOptions,
+                               datasetCombs = list(c('survey', 'artsobs')),
+                               method = 'Predict',
+                               predictName = 'survey')
+```
+
+The results are given as follows. The first column represents the name of the datasets used in the training model, and the folds represent the marginal likelihood obtained from the test model.
+
+```{r predResults}
+ISDMPredBlock
+
+ISDMPredBiasBlock
 ```
 
 # Session info and runtime
